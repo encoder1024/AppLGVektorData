@@ -1,30 +1,30 @@
 import express from 'express';
 import pg from 'pg';
 import cors from 'cors';
+import 'dotenv/config'; // Carga las variables de entorno de .env automáticamente
 
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
 
 // Middleware
-app.use(cors()); // Permite que el Frontend (puerto 5173) consulte al Backend (3000)
+app.use(cors()); // Permite consultas desde el frontend
 app.use(express.json());
 
-console.log("El host es:", process.env.VITE_DB_HOST);
-
-// backend/server.js
-
+// Configuración del Pool de Conexión (Ticket 1.1)
 const pool = new pg.Pool({
-  // Prioridad: 1. Variable de Docker, 2. El nombre del servicio, 3. localhost (solo para local)
-  host: process.env.DB_HOST || 'timescaledb', 
+  // Prioridad: 1. Variable de Docker, 2. DB_HOST del .env, 3. localhost como fallback
+  host: process.env.DB_HOST || 'localhost', 
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
-  port: 5432,
+  port: parseInt(process.env.DB_PORT, 10) || 5432,
 });
 
-// Agregá este log para debuguear en la terminal de Docker
-console.log('Intentando conectar a la DB en:', pool.options.host);
-
+console.log('--- Configuración de Conexión ---');
+console.log('Modo:', process.env.NODE_ENV);
+console.log('Host DB:', pool.options.host);
+console.log('Database:', pool.options.database);
+console.log('---------------------------------');
 
 // Ruta de prueba para verificar la conexión
 app.get('/api/status', async (req, res) => {
@@ -32,27 +32,28 @@ app.get('/api/status', async (req, res) => {
     const result = await pool.query('SELECT NOW() as now');
     res.json({ 
       status: 'Online', 
+      node_env: process.env.NODE_ENV,
       db_time: result.rows[0].now,
       message: 'Conexión exitosa con TimescaleDB' 
     });
   } catch (err) {
-    console.error(err);
+    console.error('Error de conexión:', err.message);
     res.status(500).json({ status: 'Error', error: err.message });
   }
 });
 
-// Ejemplo de ruta para obtener datos (ajustá según tu tabla)
+// Rutas de API iniciales
 app.get('/api/data', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM tu_tabla LIMIT 10');
+    const result = await pool.query('SELECT * FROM sensor_readings LIMIT 10');
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-const HOST = '0.0.0.0'; // Escuchar en todas las interfaces de red del contenedor
+const HOST = '0.0.0.0'; // Escuchar en todas las interfaces para Docker/Red Local
 
 app.listen(port, HOST, () => {
-  console.log(`🚀 Backend corriendo en http://localhost:${port}`);
+  console.log(`🚀 Backend industrial corriendo en http://localhost:${port}`);
 });

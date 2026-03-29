@@ -3,6 +3,9 @@ import cors from 'cors';
 import 'dotenv/config'; 
 import db from './config/db.js';
 import authRoutes from './routes/authRoutes.js';
+import plcRoutes from './routes/plcRoutes.js';
+import calibrationRoutes from './routes/calibrationRoutes.js';
+import sensorRoutes from './routes/sensorRoutes.js';
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -13,6 +16,9 @@ app.use(express.json());
 
 // Registro de Rutas
 app.use('/api/auth', authRoutes);
+app.use('/api/plcs', plcRoutes);
+app.use('/api/calibration', calibrationRoutes);
+app.use('/api/sensors', sensorRoutes);
 
 // Función de Inicialización de Base de Datos con Reintentos Robustos
 async function initDB(retries = 15) {

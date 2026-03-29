@@ -6,6 +6,9 @@ import Layout from './components/layout/Layout';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Dashboard from './pages/Dashboard';
+import ConfigPLCs from './pages/ConfigPLCs';
+import ConfigSensores from './pages/ConfigSensores';
+import ConfigCalibration from './pages/ConfigCalibration';
 
 // Tema personalizado industrial
 const theme = createTheme({
@@ -52,8 +55,9 @@ function App() {
             <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
               <Route index element={<Dashboard />} />
               <Route path="historicos" element={<Typography variant="h4">Históricos (Próximamente)</Typography>} />
-              <Route path="config/plcs" element={<Typography variant="h4">Configuración PLC (Próximamente)</Typography>} />
-              <Route path="config/sensores" element={<Typography variant="h4">Caja de Ajustes (Próximamente)</Typography>} />
+              <Route path="config/plcs" element={<ConfigPLCs />} />
+              <Route path="config/calibracion" element={<ConfigCalibration />} />
+              <Route path="config/sensores" element={<ConfigSensores />} />
               <Route path="admin/usuarios" element={<Typography variant="h4">Gestión Usuarios (Próximamente)</Typography>} />
               <Route path="settings" element={<Typography variant="h4">Ajustes App (Próximamente)</Typography>} />
             </Route>

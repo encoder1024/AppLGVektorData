@@ -52,6 +52,7 @@ const Layout = () => {
     { text: 'Dashboard HMI', icon: <DashboardIcon />, path: '/', roles: ['ADMIN', 'LIDER', 'DEVELOPER', 'TECHNICIAN'] },
     { text: 'Históricos', icon: <HistoryIcon />, path: '/historicos', roles: ['ADMIN', 'LIDER', 'DEVELOPER', 'TECHNICIAN'] },
     { text: 'Configuración PLC', icon: <PLCSIcon />, path: '/config/plcs', roles: ['ADMIN', 'DEVELOPER'] },
+    { text: 'Perfiles Calibración', icon: <FunctionsIcon />, path: '/config/calibracion', roles: ['ADMIN', 'DEVELOPER'] },
     { text: 'Caja de Ajustes', icon: <SensorsIcon />, path: '/config/sensores', roles: ['ADMIN', 'DEVELOPER', 'LIDER'] },
     { text: 'Usuarios', icon: <PeopleIcon />, path: '/admin/usuarios', roles: ['ADMIN'] },
     { text: 'Ajustes App', icon: <SettingsIcon />, path: '/settings', roles: ['ADMIN'] },

@@ -1,59 +1,73 @@
 import express from 'express';
-import pg from 'pg';
 import cors from 'cors';
-import 'dotenv/config'; // Carga las variables de entorno de .env automáticamente
+import 'dotenv/config'; 
+import db from './config/db.js';
+import authRoutes from './routes/authRoutes.js';
 
 const app = express();
 const port = process.env.PORT || 3000;
 
 // Middleware
-app.use(cors()); // Permite consultas desde el frontend
+app.use(cors()); 
 app.use(express.json());
 
-// Configuración del Pool de Conexión (Ticket 1.1)
-const pool = new pg.Pool({
-  // Prioridad: 1. Variable de Docker, 2. DB_HOST del .env, 3. localhost como fallback
-  host: process.env.DB_HOST || 'localhost', 
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  port: parseInt(process.env.DB_PORT, 10) || 5432,
-});
+// Registro de Rutas
+app.use('/api/auth', authRoutes);
 
-console.log('--- Configuración de Conexión ---');
-console.log('Modo:', process.env.NODE_ENV);
-console.log('Host DB:', pool.options.host);
-console.log('Database:', pool.options.database);
-console.log('---------------------------------');
+// Función de Inicialización de Base de Datos con Reintentos Robustos
+async function initDB(retries = 15) {
+  while (retries > 0) {
+    try {
+      console.log(`🛠️ Verificando conexión a base de datos... (${retries} intentos restantes)`);
 
-// Ruta de prueba para verificar la conexión
+      // Intentar una consulta simple para ver si la DB responde
+      await db.raw('SELECT 1');
+
+      console.log('📡 Conexión establecida. Ejecutando migraciones...');
+      await db.migrate.latest();
+      console.log('✅ Estructura de tablas actualizada.');
+
+      await db.seed.run();
+      console.log('✅ Datos iniciales (seeds) procesados.');
+
+      console.log('🚀 Base de datos industrial lista y persistente.');
+      return; 
+    } catch (err) {
+      retries -= 1;
+      console.log(`⚠️ Base de datos no disponible (${err.code || 'Buscando...'}). Reintentando en 10s...`);
+
+      if (retries === 0) {
+        console.error('❌ Error fatal: No se pudo conectar a la base de datos después de varios minutos.', err);
+        process.exit(1);
+      }
+
+      // Espera bloqueante de 10 segundos
+      await new Promise(resolve => setTimeout(resolve, 10000));
+    }
+  }
+}
+
+
+// Rutas de prueba básicas
 app.get('/api/status', async (req, res) => {
   try {
-    const result = await pool.query('SELECT NOW() as now');
+    const result = await db.raw('SELECT NOW() as now');
     res.json({ 
       status: 'Online', 
       node_env: process.env.NODE_ENV,
       db_time: result.rows[0].now,
-      message: 'Conexión exitosa con TimescaleDB' 
+      message: 'Sistema de persistencia Knex OK' 
     });
   } catch (err) {
-    console.error('Error de conexión:', err.message);
     res.status(500).json({ status: 'Error', error: err.message });
   }
 });
 
-// Rutas de API iniciales
-app.get('/api/data', async (req, res) => {
-  try {
-    const result = await pool.query('SELECT * FROM sensor_readings LIMIT 10');
-    res.json(result.rows);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+const HOST = '0.0.0.0';
 
-const HOST = '0.0.0.0'; // Escuchar en todas las interfaces para Docker/Red Local
-
-app.listen(port, HOST, () => {
-  console.log(`🚀 Backend industrial corriendo en http://localhost:${port}`);
+// Iniciar base de datos y luego el servidor
+initDB().then(() => {
+  app.listen(port, HOST, () => {
+    console.log(`🚀 Backend industrial (Knex) corriendo en http://localhost:${port}`);
+  });
 });

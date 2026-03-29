@@ -3,7 +3,7 @@ import {
   Box, Typography, Button, Paper, Table, TableBody, TableCell, 
   TableContainer, TableHead, TableRow, IconButton, Dialog, 
   DialogTitle, DialogContent, DialogActions, TextField, MenuItem,
-  Alert, CircularProgress, Chip, Grid, Divider
+  Alert, CircularProgress, Chip, Grid, Tabs, Tab, Divider
 } from '@mui/material';
 import { 
   Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Refresh as RefreshIcon
@@ -13,6 +13,25 @@ import api from '../services/api';
 const signalTypes = ['ANALOG_INPUT', 'ANALOG_OUTPUT', 'DIGITAL_INPUT', 'DIGITAL_OUTPUT'];
 const dataTypes = ['INT16', 'UINT16', 'INT32', 'UINT32', 'FLOAT32', 'BOOLEAN'];
 
+// Componente para manejar el contenido de cada Tab
+function TabPanel(props) {
+  const { children, value, index, ...other } = props;
+  return (
+    <div role="tabpanel" hidden={value !== index} {...other}>
+      {value === index && <Box sx={{ pt: 3 }}>{children}</Box>}
+    </div>
+  );
+}
+
+const instrumentTypes = [
+  { value: 'GAUGE_RADIAL', label: 'Gauge Radial (Reloj)' },
+  { value: 'GAUGE_LINEAR', label: 'Barra Progresiva' },
+  { value: 'TERMOMETRO_SIMPLE', label: 'Termómetro SVG Simple' },
+  { value: 'TERMOMETRO_DETALLADO', label: 'Termómetro SVG Industrial' },
+  { value: 'NIVEL_TANQUE', label: 'Tanque de Líquido' },
+  { value: 'VALOR_DIGITAL', label: 'Display Digital (Texto)' }
+];
+
 const ConfigSensores = () => {
   const [sensors, setSensors] = useState([]);
   const [plcs, setPlcs] = useState([]);
@@ -21,6 +40,7 @@ const ConfigSensores = () => {
   const [error, setError] = useState('');
   const [open, setOpen] = useState(false);
   const [currentSensor, setCurrentSensor] = useState(null);
+  const [tabValue, setTabValue] = useState(0);
   
   const [formData, setFormData] = useState({
     plc_id: '',
@@ -30,6 +50,7 @@ const ConfigSensores = () => {
     direccion_memoria: '',
     unidad_medida: '',
     calibration_profile_id: '',
+    tipo_instrumento: 'GAUGE_RADIAL',
     min_range: 0,
     max_range: 100,
     warning_low: '',
@@ -59,9 +80,9 @@ const ConfigSensores = () => {
   useEffect(() => { fetchData(); }, []);
 
   const handleOpen = (sensor = null) => {
+    setTabValue(0); // Reset a la primera tab
     if (sensor) {
       setCurrentSensor(sensor);
-      // Limpiar nulls para los inputs de MUI
       const cleanedData = { ...sensor };
       Object.keys(cleanedData).forEach(key => {
         if (cleanedData[key] === null) cleanedData[key] = '';
@@ -82,10 +103,10 @@ const ConfigSensores = () => {
 
   const handleClose = () => { setOpen(false); setError(''); };
   const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
+  const handleTabChange = (event, newValue) => setTabValue(newValue);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    // Convertir campos vacíos a null para el backend
     const submissionData = { ...formData };
     ['warning_low', 'warning_high', 'alert_low', 'alert_high', 'calibration_profile_id'].forEach(key => {
       if (submissionData[key] === '') submissionData[key] = null;
@@ -116,7 +137,7 @@ const ConfigSensores = () => {
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-        <Typography variant="h4" sx={{ fontWeight: 'bold' }}>Caja de Ajustes (Sensores)</Typography>
+        <Typography variant="h4" sx={{ fontWeight: 'bold' }}>Caja de Ajustes</Typography>
         <Box>
           <IconButton onClick={fetchData} sx={{ mr: 1 }}><RefreshIcon /></IconButton>
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => handleOpen()}>Nuevo Sensor</Button>
@@ -152,7 +173,7 @@ const ConfigSensores = () => {
                   <TableCell>{s.perfil_nombre || 'Directo'}</TableCell>
                   <TableCell>
                     <Typography variant="caption">R: {s.min_range}-{s.max_range}</Typography><br/>
-                    <Chip label={`A: ${s.alert_high}`} size="xs" color="error" variant="outlined" sx={{ height: 16, fontSize: '0.6rem' }} />
+                    {s.alert_high && <Chip label={`A: ${s.alert_high}`} size="small" color="error" variant="outlined" sx={{ height: 16, fontSize: '0.6rem' }} />}
                   </TableCell>
                   <TableCell align="right">
                     <IconButton size="small" onClick={() => handleOpen(s)}><EditIcon fontSize="small" /></IconButton>
@@ -166,66 +187,106 @@ const ConfigSensores = () => {
       </TableContainer>
 
       <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
-        <DialogTitle>{currentSensor ? 'Editar Sensor' : 'Nuevo Sensor'}</DialogTitle>
+        <DialogTitle>{currentSensor ? 'Configurar Sensor' : 'Nuevo Sensor'}</DialogTitle>
         <form onSubmit={handleSubmit}>
-          <DialogContent>
-            <Grid container spacing={2}>
-              <Grid item xs={12} sm={6}>
-                <TextField select fullWidth name="plc_id" label="PLC Destino" value={formData.plc_id} onChange={handleChange} required>
-                  {plcs.map(p => <MenuItem key={p.id} value={p.id}>{p.nombre}</MenuItem>)}
-                </TextField>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField fullWidth name="tag_name" label="Tag Name (Identificador)" value={formData.tag_name} onChange={handleChange} required />
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <TextField select fullWidth name="tipo_signal" label="Tipo de Señal" value={formData.tipo_signal} onChange={handleChange} required>
-                  {signalTypes.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}
-                </TextField>
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <TextField select fullWidth name="tipo_dato_plc" label="Tipo de Dato" value={formData.tipo_dato_plc} onChange={handleChange} required>
-                  {dataTypes.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}
-                </TextField>
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <TextField fullWidth name="direccion_memoria" label="Dirección / Registro" value={formData.direccion_memoria} onChange={handleChange} required />
-              </Grid>
+          <DialogContent sx={{ minHeight: 400 }}>
+            <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+              <Tabs value={tabValue} onChange={handleTabChange} aria-label="sensor tabs">
+                <Tab label="Identificación" />
+                <Tab label="Calibración y Visualización" />
+                <Tab label="Niveles de Alerta" />
+              </Tabs>
+            </Box>
 
-              <Grid item xs={12}><Divider>Calibración y Visualización</Divider></Grid>
-              
-              <Grid item xs={12} sm={6}>
-                <TextField select fullWidth name="calibration_profile_id" label="Perfil de Calibración" value={formData.calibration_profile_id} onChange={handleChange}>
-                  <MenuItem value="">Ninguno (Valor Directo)</MenuItem>
-                  {profiles.map(p => <MenuItem key={p.id} value={p.id}>{p.nombre} ({p.tipo_formula})</MenuItem>)}
-                </TextField>
+            <TabPanel value={tabValue} index={0}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <TextField select fullWidth name="plc_id" label="PLC Destino" value={formData.plc_id} onChange={handleChange} required>
+                    {plcs.map(p => <MenuItem key={p.id} value={p.id}>{p.nombre}</MenuItem>)}
+                  </TextField>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField fullWidth name="tag_name" label="Tag Name (ID Sensor)" value={formData.tag_name} onChange={handleChange} required />
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <TextField select fullWidth name="tipo_signal" label="Tipo de Señal" value={formData.tipo_signal} onChange={handleChange} required>
+                    {signalTypes.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}
+                  </TextField>
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <TextField select fullWidth name="tipo_dato_plc" label="Tipo de Dato PLC" value={formData.tipo_dato_plc} onChange={handleChange} required>
+                    {dataTypes.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}
+                  </TextField>
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <TextField fullWidth name="direccion_memoria" label="Registro/Dirección" value={formData.direccion_memoria} onChange={handleChange} required />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField fullWidth name="unidad_medida" label="Unidad de Medida (ej: °C, Bar)" value={formData.unidad_medida} onChange={handleChange} />
+                </Grid>
               </Grid>
-              <Grid item xs={12} sm={3}>
-                <TextField fullWidth name="min_range" label="Mínimo Gráfico" type="number" value={formData.min_range} onChange={handleChange} />
-              </Grid>
-              <Grid item xs={12} sm={3}>
-                <TextField fullWidth name="max_range" label="Máximo Gráfico" type="number" value={formData.max_range} onChange={handleChange} />
-              </Grid>
+            </TabPanel>
 
-              <Grid item xs={12}><Divider>Niveles de Alerta (Preventivo y Crítico)</Divider></Grid>
-              
-              <Grid item xs={12} sm={3}>
-                <TextField fullWidth name="warning_low" label="Aviso Bajo" type="number" value={formData.warning_low} onChange={handleChange} />
+            <TabPanel value={tabValue} index={1}>
+              <Grid container spacing={3}>
+                <Grid item xs={12} sm={6}>
+                  <TextField 
+                    select 
+                    fullWidth 
+                    name="tipo_instrumento" 
+                    label="Visualización SVG" 
+                    value={formData.tipo_instrumento} 
+                    onChange={handleChange}
+                    required
+                  >
+                    {instrumentTypes.map(t => <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>)}
+                  </TextField>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField 
+                    select 
+                    fullWidth 
+                    name="calibration_profile_id" 
+                    label="Motor de Calibración" 
+                    value={formData.calibration_profile_id} 
+                    onChange={handleChange}
+                  >
+                    <MenuItem value="">Ninguno (Directo)</MenuItem>
+                    {profiles.map(p => (
+                      <MenuItem key={p.id} value={p.id}>{p.nombre}</MenuItem>
+                    ))}
+                  </TextField>
+                </Grid>
+                
+                <Grid item xs={12}><Divider sx={{ opacity: 0.5 }}>Límites de Escala</Divider></Grid>
+
+                <Grid item xs={12} sm={6}>
+                  <TextField fullWidth name="min_range" label="Mínimo Gráfico" type="number" value={formData.min_range} onChange={handleChange} />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField fullWidth name="max_range" label="Máximo Gráfico" type="number" value={formData.max_range} onChange={handleChange} />
+                </Grid>
               </Grid>
-              <Grid item xs={12} sm={3}>
-                <TextField fullWidth name="warning_high" label="Aviso Alto" type="number" value={formData.warning_high} onChange={handleChange} />
+            </TabPanel>
+
+            <TabPanel value={tabValue} index={2}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="subtitle2" gutterBottom color="warning.main">Avisos Preventivos</Typography>
+                  <TextField fullWidth name="warning_low" label="Umbral Bajo" type="number" value={formData.warning_low} onChange={handleChange} sx={{ mb: 2 }} />
+                  <TextField fullWidth name="warning_high" label="Umbral Alto" type="number" value={formData.warning_high} onChange={handleChange} />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="subtitle2" gutterBottom color="error.main">Alertas Críticas</Typography>
+                  <TextField fullWidth name="alert_low" label="Umbral Bajo" type="number" value={formData.alert_low} onChange={handleChange} sx={{ mb: 2 }} />
+                  <TextField fullWidth name="alert_high" label="Umbral Alto" type="number" value={formData.alert_high} onChange={handleChange} />
+                </Grid>
               </Grid>
-              <Grid item xs={12} sm={3}>
-                <TextField fullWidth name="alert_low" label="Alerta Baja" type="number" value={formData.alert_low} onChange={handleChange} />
-              </Grid>
-              <Grid item xs={12} sm={3}>
-                <TextField fullWidth name="alert_high" label="Alerta Alta" type="number" value={formData.alert_high} onChange={handleChange} />
-              </Grid>
-            </Grid>
+            </TabPanel>
           </DialogContent>
-          <DialogActions>
+          <DialogActions sx={{ p: 3 }}>
             <Button onClick={handleClose}>Cancelar</Button>
-            <Button type="submit" variant="contained">Guardar Sensor</Button>
+            <Button type="submit" variant="contained" color="primary" size="large">Guardar Ajustes</Button>
           </DialogActions>
         </form>
       </Dialog>

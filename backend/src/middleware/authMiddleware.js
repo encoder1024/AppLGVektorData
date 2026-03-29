@@ -14,15 +14,15 @@ export const protect = (req, res, next) => {
       // Añadir los datos del usuario decodificados a la petición
       req.user = decoded;
 
-      next();
+      return next();
     } catch (error) {
       console.error('Error de token:', error);
-      res.status(401).json({ message: 'No autorizado, token fallido' });
+      return res.status(401).json({ message: 'No autorizado, token fallido' });
     }
   }
 
   if (!token) {
-    res.status(401).json({ message: 'No autorizado, no hay token' });
+    return res.status(401).json({ message: 'No autorizado, no hay token' });
   }
 };
 

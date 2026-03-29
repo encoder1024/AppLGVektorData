@@ -24,7 +24,9 @@ import {
   ExitToApp as LogoutIcon,
   ChevronLeft as ChevronLeftIcon,
   Sensors as SensorsIcon,
-  SettingsInputComponent as PLCSIcon
+  SettingsInputComponent as PLCSIcon,
+  Functions as FunctionsIcon,
+  ToggleOn as ToggleIcon
 } from '@mui/icons-material';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -49,12 +51,14 @@ const Layout = () => {
   };
 
   const menuItems = [
-    { text: 'Dashboard HMI', icon: <DashboardIcon />, path: '/', roles: ['ADMIN', 'LIDER', 'DEVELOPER', 'TECHNICIAN'] },
+    { text: 'Panel Control', icon: <DashboardIcon />, path: '/', roles: ['ADMIN', 'LIDER', 'DEVELOPER', 'TECHNICIAN'] },
     { text: 'Históricos', icon: <HistoryIcon />, path: '/historicos', roles: ['ADMIN', 'LIDER', 'DEVELOPER', 'TECHNICIAN'] },
-    { text: 'Configuración PLC', icon: <PLCSIcon />, path: '/config/plcs', roles: ['ADMIN', 'DEVELOPER'] },
+    { text: 'PLC Configuración', icon: <PLCSIcon />, path: '/config/plcs', roles: ['ADMIN', 'DEVELOPER'] },
     { text: 'Perfiles Calibración', icon: <FunctionsIcon />, path: '/config/calibracion', roles: ['ADMIN', 'DEVELOPER'] },
-    { text: 'Caja de Ajustes', icon: <SensorsIcon />, path: '/config/sensores', roles: ['ADMIN', 'DEVELOPER', 'LIDER'] },
+    { text: 'Sensores Configuración', icon: <SensorsIcon />, path: '/config/sensores', roles: ['ADMIN', 'DEVELOPER', 'LIDER'] },
+    { text: 'Actuadores', icon: <ToggleIcon />, path: '/config/actuadores', roles: ['ADMIN', 'DEVELOPER'] },
     { text: 'Usuarios', icon: <PeopleIcon />, path: '/admin/usuarios', roles: ['ADMIN'] },
+
     { text: 'Ajustes App', icon: <SettingsIcon />, path: '/settings', roles: ['ADMIN'] },
   ];
 

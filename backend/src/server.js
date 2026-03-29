@@ -2,78 +2,70 @@ import express from 'express';
 import cors from 'cors';
 import 'dotenv/config'; 
 import db from './config/db.js';
+
+// Importación de rutas (las dejamos aquí arriba pero las usaremos después)
 import authRoutes from './routes/authRoutes.js';
 import plcRoutes from './routes/plcRoutes.js';
 import calibrationRoutes from './routes/calibrationRoutes.js';
 import sensorRoutes from './routes/sensorRoutes.js';
+import actuatorRoutes from './routes/actuatorRoutes.js';
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Middleware
 app.use(cors()); 
 app.use(express.json());
 
-// Registro de Rutas
-app.use('/api/auth', authRoutes);
-app.use('/api/plcs', plcRoutes);
-app.use('/api/calibration', calibrationRoutes);
-app.use('/api/sensors', sensorRoutes);
+// 1. LOGGER ABSOLUTO (Debe ser lo primero)
+app.use((req, res, next) => {
+  console.log(`DEBUG: Recibida petición ${req.method} en ${req.url}`);
+  next();
+});
 
-// Función de Inicialización de Base de Datos con Reintentos Robustos
-async function initDB(retries = 15) {
-  while (retries > 0) {
-    try {
-      console.log(`🛠️ Verificando conexión a base de datos... (${retries} intentos restantes)`);
+// 2. RUTAS DE PRUEBA ULTRA-SIMPLES (Antes que los Routers)
+app.get('/api/test_directo', (req, res) => res.json({ message: 'OK DIRECTO' }));
 
-      // Intentar una consulta simple para ver si la DB responde
-      await db.raw('SELECT 1');
-
-      console.log('📡 Conexión establecida. Ejecutando migraciones...');
-      await db.migrate.latest();
-      console.log('✅ Estructura de tablas actualizada.');
-
-      await db.seed.run();
-      console.log('✅ Datos iniciales (seeds) procesados.');
-
-      console.log('🚀 Base de datos industrial lista y persistente.');
-      return; 
-    } catch (err) {
-      retries -= 1;
-      console.log(`⚠️ Base de datos no disponible (${err.code || 'Buscando...'}). Reintentando en 10s...`);
-
-      if (retries === 0) {
-        console.error('❌ Error fatal: No se pudo conectar a la base de datos después de varios minutos.', err);
-        process.exit(1);
-      }
-
-      // Espera bloqueante de 10 segundos
-      await new Promise(resolve => setTimeout(resolve, 10000));
-    }
-  }
-}
-
-
-// Rutas de prueba básicas
 app.get('/api/status', async (req, res) => {
   try {
     const result = await db.raw('SELECT NOW() as now');
     res.json({ 
       status: 'Online', 
-      node_env: process.env.NODE_ENV,
       db_time: result.rows[0].now,
-      message: 'Sistema de persistencia Knex OK' 
+      message: 'Hola Knex OK' 
     });
   } catch (err) {
-    res.status(500).json({ status: 'Error', error: err.message });
+    res.status(500).json({ error: err.message });
   }
 });
 
-const HOST = '0.0.0.0';
+// 3. REGISTRO DE ROUTERS (Aquí podría estar el error)
+console.log('📡 Registrando rutas de la API...');
+app.use('/api/auth', authRoutes);
+app.use('/api/plcs', plcRoutes);
+app.use('/api/calibration', calibrationRoutes);
+app.use('/api/sensors', sensorRoutes);
+app.use('/api/actuators', actuatorRoutes);
+console.log('✅ Rutas registradas.');
 
-// Iniciar base de datos y luego el servidor
+async function initDB(retries = 15) {
+  while (retries > 0) {
+    try {
+      await db.raw('SELECT 1');
+      await db.migrate.latest();
+      await db.seed.run();
+      console.log('🚀 Base de datos industrial lista.');
+      return; 
+    } catch (err) {
+      retries -= 1;
+      console.log(`⚠️ Esperando DB... (${retries})`);
+      await new Promise(resolve => setTimeout(resolve, 10000));
+    }
+  }
+}
+
+const HOST = '0.0.0.0';
 initDB().then(() => {
   app.listen(port, HOST, () => {
-    console.log(`🚀 Backend industrial (Knex) corriendo en http://localhost:${port}`);
+    console.log(`🚀 Servidor en puerto ${port}`);
   });
 });

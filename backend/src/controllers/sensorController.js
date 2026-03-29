@@ -37,11 +37,19 @@ const createSensor = async (req, res) => {
 
 const updateSensor = async (req, res) => {
   const { id } = req.params;
+  const updates = { ...req.body };
+
+  // Eliminar campos que vienen del JOIN y no existen en la tabla física
+  delete updates.id;
+  delete updates.plc_nombre;
+  delete updates.perfil_nombre;
+  delete updates.created_at;
+
   try {
     const oldSensor = await db('sensors').where({ id }).first();
     if (!oldSensor) return res.status(404).json({ message: 'Sensor no encontrado' });
 
-    const [updatedSensor] = await db('sensors').where({ id }).update(req.body).returning('*');
+    const [updatedSensor] = await db('sensors').where({ id }).update(updates).returning('*');
 
     await logAudit(
       req.user.id,

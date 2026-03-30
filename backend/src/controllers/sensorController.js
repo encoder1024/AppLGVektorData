@@ -15,6 +15,37 @@ const getSensors = async (req, res) => {
   }
 };
 
+const getSensorReadings = async (req, res) => {
+  const { id } = req.params;
+  const { start, end } = req.query;
+
+  try {
+    let query = db('sensor_readings as sr')
+      .select(
+        'sr.time',
+        'sr.valor_procesado as value',
+        'sr.valor_crudo as raw_value',
+        's.unidad_medida as unit',
+        's.tag_name'
+      )
+      .leftJoin('sensors as s', 'sr.sensor_id', 's.id')
+      .where('sr.sensor_id', id);
+
+    if (start && end) {
+      query = query.whereBetween('sr.time', [start, end]);
+    } else if (start) {
+      query = query.where('sr.time', '>=', start);
+    } else if (end) {
+      query = query.where('sr.time', '<=', end);
+    }
+
+    const readings = await query.orderBy('sr.time', 'asc');
+    res.json(readings);
+  } catch (error) {
+    res.status(500).json({ message: 'Error al obtener lecturas historicas del sensor', error: error.message });
+  }
+};
+
 const createSensor = async (req, res) => {
   try {
     const [newSensor] = await db('sensors').insert(req.body).returning('*');
@@ -91,4 +122,4 @@ const deleteSensor = async (req, res) => {
   }
 };
 
-export default { getSensors, createSensor, updateSensor, deleteSensor };
+export default { getSensors, getSensorReadings, createSensor, updateSensor, deleteSensor };

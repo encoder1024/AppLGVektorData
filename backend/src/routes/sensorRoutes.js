@@ -7,6 +7,7 @@ const router = express.Router();
 router.use(protect);
 
 router.get('/', sensorController.getSensors);
+router.get('/:id/readings', sensorController.getSensorReadings);
 
 // Solo ADMIN, DEVELOPER y LIDER pueden realizar ajustes de señales
 router.post('/', authorize('ADMIN', 'DEVELOPER', 'LIDER'), sensorController.createSensor);

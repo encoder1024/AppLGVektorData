@@ -14,7 +14,7 @@ import {
 import api from '../services/api';
 
 const brands = ['SIEMENS', 'SCHNEIDER', 'ALLEN_BRADLEY', 'DELTA', 'ARDUINO', 'OTHER'];
-const protocols = ['MODBUS_TCP', 'S7', 'ETHERNET_IP', 'OPC_UA', 'MQTT'];
+const protocols = ['MODBUS_TCP', 'S7', 'ETHERNET_IP', 'OPC_UA', 'MQTT', 'SIMULATED'];
 
 const ConfigPLCs = () => {
   const [plcs, setPlcs] = useState([]);

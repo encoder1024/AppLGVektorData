@@ -3,7 +3,7 @@ import {
   Box, Typography, Button, Paper, Table, TableBody, TableCell, 
   TableContainer, TableHead, TableRow, IconButton, Dialog, 
   DialogTitle, DialogContent, DialogActions, TextField, MenuItem,
-  Alert, CircularProgress, Chip, Grid, Tabs, Tab, Divider
+  Alert, CircularProgress, Chip, Grid, Tabs, Tab, Divider, Switch, FormControlLabel
 } from '@mui/material';
 import { 
   Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Refresh as RefreshIcon
@@ -12,17 +12,6 @@ import api from '../services/api';
 
 const signalTypes = ['ANALOG_INPUT', 'ANALOG_OUTPUT', 'DIGITAL_INPUT', 'DIGITAL_OUTPUT'];
 const dataTypes = ['INT16', 'UINT16', 'INT32', 'UINT32', 'FLOAT32', 'BOOLEAN'];
-
-// Componente para manejar el contenido de cada Tab
-function TabPanel(props) {
-  const { children, value, index, ...other } = props;
-  return (
-    <div role="tabpanel" hidden={value !== index} {...other}>
-      {value === index && <Box sx={{ pt: 3 }}>{children}</Box>}
-    </div>
-  );
-}
-
 const instrumentTypes = [
   { value: 'GAUGE_RADIAL', label: 'Gauge Radial (Reloj)' },
   { value: 'GAUGE_LINEAR', label: 'Barra Progresiva' },
@@ -31,6 +20,15 @@ const instrumentTypes = [
   { value: 'NIVEL_TANQUE', label: 'Tanque de Líquido' },
   { value: 'VALOR_DIGITAL', label: 'Display Digital (Texto)' }
 ];
+
+function TabPanel(props) {
+  const { children, value, index, ...other } = props;
+  return (
+    <div role="tabpanel" hidden={value !== index} {...other}>
+      {value === index && <Box sx={{ pt: 3 }}>{children}</Box>}
+    </div>
+  );
+}
 
 const ConfigSensores = () => {
   const [sensors, setSensors] = useState([]);
@@ -56,7 +54,8 @@ const ConfigSensores = () => {
     warning_low: '',
     warning_high: '',
     alert_low: '',
-    alert_high: ''
+    alert_high: '',
+    activo: true
   });
 
   const fetchData = async () => {
@@ -80,29 +79,39 @@ const ConfigSensores = () => {
   useEffect(() => { fetchData(); }, []);
 
   const handleOpen = (sensor = null) => {
-    setTabValue(0); // Reset a la primera tab
+    setTabValue(0);
     if (sensor) {
       setCurrentSensor(sensor);
       const cleanedData = { ...sensor };
       Object.keys(cleanedData).forEach(key => {
         if (cleanedData[key] === null) cleanedData[key] = '';
       });
-      setFormData(cleanedData);
+      setFormData({ ...cleanedData, activo: sensor.activo ?? true });
     } else {
       setCurrentSensor(null);
       setFormData({
         plc_id: plcs[0]?.id || '',
         tag_name: '', tipo_signal: 'ANALOG_INPUT', tipo_dato_plc: 'INT16',
         direccion_memoria: '', unidad_medida: '', calibration_profile_id: '',
+        tipo_instrumento: 'GAUGE_RADIAL',
         min_range: 0, max_range: 100, warning_low: '', warning_high: '',
-        alert_low: '', alert_high: ''
+        alert_low: '', alert_high: '',
+        activo: true
       });
     }
     setOpen(true);
   };
 
   const handleClose = () => { setOpen(false); setError(''); };
-  const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
+  
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setFormData({ 
+      ...formData, 
+      [name]: type === 'checkbox' ? checked : value 
+    });
+  };
+
   const handleTabChange = (event, newValue) => setTabValue(newValue);
 
   const handleSubmit = async (e) => {
@@ -137,7 +146,7 @@ const ConfigSensores = () => {
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-        <Typography variant="h4" sx={{ fontWeight: 'bold' }}>Caja de Ajustes</Typography>
+        <Typography variant="h4" sx={{ fontWeight: 'bold' }}>Sensores Configuración</Typography>
         <Box>
           <IconButton onClick={fetchData} sx={{ mr: 1 }}><RefreshIcon /></IconButton>
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => handleOpen()}>Nuevo Sensor</Button>
@@ -150,30 +159,39 @@ const ConfigSensores = () => {
         <Table size="small">
           <TableHead sx={{ backgroundColor: '#f1f5f9' }}>
             <TableRow>
+              <TableCell>Estado</TableCell>
               <TableCell>Tag / PLC</TableCell>
               <TableCell>Dirección</TableCell>
-              <TableCell>Unidad</TableCell>
               <TableCell>Calibración</TableCell>
-              <TableCell>Rangos / Alertas</TableCell>
+              <TableCell>Visualización</TableCell>
               <TableCell align="right">Acciones</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {loading ? (
               <TableRow><TableCell colSpan={6} align="center"><CircularProgress size={24} /></TableCell></TableRow>
+            ) : sensors.length === 0 ? (
+              <TableRow><TableCell colSpan={6} align="center">No hay sensores configurados</TableCell></TableRow>
             ) : (
               sensors.map((s) => (
-                <TableRow key={s.id}>
+                <TableRow key={s.id} sx={{ opacity: s.activo ? 1 : 0.5 }}>
+                  <TableCell>
+                    <Chip 
+                      label={s.activo ? "ACTIVO" : "OFF"} 
+                      size="small" 
+                      color={s.activo ? "success" : "default"} 
+                      variant={s.activo ? "filled" : "outlined"}
+                    />
+                  </TableCell>
                   <TableCell>
                     <Typography variant="subtitle2">{s.tag_name}</Typography>
                     <Typography variant="caption" color="textSecondary">{s.plc_nombre}</Typography>
                   </TableCell>
                   <TableCell>{s.direccion_memoria} ({s.tipo_dato_plc})</TableCell>
-                  <TableCell>{s.unidad_medida}</TableCell>
                   <TableCell>{s.perfil_nombre || 'Directo'}</TableCell>
                   <TableCell>
-                    <Typography variant="caption">R: {s.min_range}-{s.max_range}</Typography><br/>
-                    {s.alert_high && <Chip label={`A: ${s.alert_high}`} size="small" color="error" variant="outlined" sx={{ height: 16, fontSize: '0.6rem' }} />}
+                    <Typography variant="caption">{s.tipo_instrumento}</Typography><br/>
+                    <Typography variant="caption" color="textSecondary">{s.min_range} a {s.max_range} {s.unidad_medida}</Typography>
                   </TableCell>
                   <TableCell align="right">
                     <IconButton size="small" onClick={() => handleOpen(s)}><EditIcon fontSize="small" /></IconButton>
@@ -187,11 +205,11 @@ const ConfigSensores = () => {
       </TableContainer>
 
       <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
-        <DialogTitle>{currentSensor ? 'Configurar Sensor' : 'Nuevo Sensor'}</DialogTitle>
+        <DialogTitle>{currentSensor ? `Configurar: ${formData.tag_name}` : 'Nuevo Sensor'}</DialogTitle>
         <form onSubmit={handleSubmit}>
-          <DialogContent sx={{ minHeight: 400 }}>
-            <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-              <Tabs value={tabValue} onChange={handleTabChange} aria-label="sensor tabs">
+          <DialogContent sx={{ minHeight: 420 }}>
+            <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+              <Tabs value={tabValue} onChange={handleTabChange}>
                 <Tab label="Identificación" />
                 <Tab label="Calibración y Visualización" />
                 <Tab label="Niveles de Alerta" />
@@ -199,14 +217,22 @@ const ConfigSensores = () => {
             </Box>
 
             <TabPanel value={tabValue} index={0}>
-              <Grid container spacing={2}>
+              <Grid container spacing={3}>
+                <Grid item xs={12}>
+                  <Box sx={{ p: 2, bgcolor: 'background.default', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
+                    <FormControlLabel
+                      control={<Switch name="activo" checked={formData.activo} onChange={handleChange} color="success" />}
+                      label={formData.activo ? "SENSOR ACTIVO (El motor capturará datos)" : "SENSOR INACTIVO (Se omitirá el polling)"}
+                    />
+                  </Box>
+                </Grid>
                 <Grid item xs={12} sm={6}>
                   <TextField select fullWidth name="plc_id" label="PLC Destino" value={formData.plc_id} onChange={handleChange} required>
                     {plcs.map(p => <MenuItem key={p.id} value={p.id}>{p.nombre}</MenuItem>)}
                   </TextField>
                 </Grid>
                 <Grid item xs={12} sm={6}>
-                  <TextField fullWidth name="tag_name" label="Tag Name (ID Sensor)" value={formData.tag_name} onChange={handleChange} required />
+                  <TextField fullWidth name="tag_name" label="Tag Name (Identificador Único)" value={formData.tag_name} onChange={handleChange} required />
                 </Grid>
                 <Grid item xs={12} sm={4}>
                   <TextField select fullWidth name="tipo_signal" label="Tipo de Señal" value={formData.tipo_signal} onChange={handleChange} required>
@@ -219,10 +245,10 @@ const ConfigSensores = () => {
                   </TextField>
                 </Grid>
                 <Grid item xs={12} sm={4}>
-                  <TextField fullWidth name="direccion_memoria" label="Registro/Dirección" value={formData.direccion_memoria} onChange={handleChange} required />
+                  <TextField fullWidth name="direccion_memoria" label="Dirección / Registro" value={formData.direccion_memoria} onChange={handleChange} required />
                 </Grid>
                 <Grid item xs={12} sm={6}>
-                  <TextField fullWidth name="unidad_medida" label="Unidad de Medida (ej: °C, Bar)" value={formData.unidad_medida} onChange={handleChange} />
+                  <TextField fullWidth name="unidad_medida" label="Unidad de Medida (ej: °C, Bar, RPM)" value={formData.unidad_medida} onChange={handleChange} />
                 </Grid>
               </Grid>
             </TabPanel>
@@ -230,56 +256,37 @@ const ConfigSensores = () => {
             <TabPanel value={tabValue} index={1}>
               <Grid container spacing={3}>
                 <Grid item xs={12} sm={6}>
-                  <TextField 
-                    select 
-                    fullWidth 
-                    name="tipo_instrumento" 
-                    label="Visualización SVG" 
-                    value={formData.tipo_instrumento} 
-                    onChange={handleChange}
-                    required
-                  >
+                  <TextField select fullWidth name="tipo_instrumento" label="Instrumento de Visualización (Dashboard)" value={formData.tipo_instrumento} onChange={handleChange} required>
                     {instrumentTypes.map(t => <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>)}
                   </TextField>
                 </Grid>
                 <Grid item xs={12} sm={6}>
-                  <TextField 
-                    select 
-                    fullWidth 
-                    name="calibration_profile_id" 
-                    label="Motor de Calibración" 
-                    value={formData.calibration_profile_id} 
-                    onChange={handleChange}
-                  >
-                    <MenuItem value="">Ninguno (Directo)</MenuItem>
-                    {profiles.map(p => (
-                      <MenuItem key={p.id} value={p.id}>{p.nombre}</MenuItem>
-                    ))}
+                  <TextField select fullWidth name="calibration_profile_id" label="Perfil de Calibración Aplicado" value={formData.calibration_profile_id} onChange={handleChange}>
+                    <MenuItem value="">Ninguno (Valor Directo)</MenuItem>
+                    {profiles.map(p => <MenuItem key={p.id} value={p.id}>{p.nombre}</MenuItem>)}
                   </TextField>
                 </Grid>
-                
-                <Grid item xs={12}><Divider sx={{ opacity: 0.5 }}>Límites de Escala</Divider></Grid>
-
+                <Grid item xs={12}><Divider sx={{ opacity: 0.5 }}>Escala del Instrumento</Divider></Grid>
                 <Grid item xs={12} sm={6}>
-                  <TextField fullWidth name="min_range" label="Mínimo Gráfico" type="number" value={formData.min_range} onChange={handleChange} />
+                  <TextField fullWidth name="min_range" label="Valor Mínimo Gráfico" type="number" value={formData.min_range} onChange={handleChange} />
                 </Grid>
                 <Grid item xs={12} sm={6}>
-                  <TextField fullWidth name="max_range" label="Máximo Gráfico" type="number" value={formData.max_range} onChange={handleChange} />
+                  <TextField fullWidth name="max_range" label="Valor Máximo Gráfico" type="number" value={formData.max_range} onChange={handleChange} />
                 </Grid>
               </Grid>
             </TabPanel>
 
             <TabPanel value={tabValue} index={2}>
-              <Grid container spacing={2}>
+              <Grid container spacing={3}>
                 <Grid item xs={12} sm={6}>
-                  <Typography variant="subtitle2" gutterBottom color="warning.main">Avisos Preventivos</Typography>
-                  <TextField fullWidth name="warning_low" label="Umbral Bajo" type="number" value={formData.warning_low} onChange={handleChange} sx={{ mb: 2 }} />
-                  <TextField fullWidth name="warning_high" label="Umbral Alto" type="number" value={formData.warning_high} onChange={handleChange} />
+                  <Typography variant="subtitle2" gutterBottom color="warning.main">Zonas de Aviso (Preventivo)</Typography>
+                  <TextField fullWidth name="warning_low" label="Umbral Inferior" type="number" value={formData.warning_low} onChange={handleChange} sx={{ mb: 2 }} />
+                  <TextField fullWidth name="warning_high" label="Umbral Superior" type="number" value={formData.warning_high} onChange={handleChange} />
                 </Grid>
                 <Grid item xs={12} sm={6}>
-                  <Typography variant="subtitle2" gutterBottom color="error.main">Alertas Críticas</Typography>
-                  <TextField fullWidth name="alert_low" label="Umbral Bajo" type="number" value={formData.alert_low} onChange={handleChange} sx={{ mb: 2 }} />
-                  <TextField fullWidth name="alert_high" label="Umbral Alto" type="number" value={formData.alert_high} onChange={handleChange} />
+                  <Typography variant="subtitle2" gutterBottom color="error.main">Zonas de Alerta (Crítico)</Typography>
+                  <TextField fullWidth name="alert_low" label="Umbral Inferior" type="number" value={formData.alert_low} onChange={handleChange} sx={{ mb: 2 }} />
+                  <TextField fullWidth name="alert_high" label="Umbral Superior" type="number" value={formData.alert_high} onChange={handleChange} />
                 </Grid>
               </Grid>
             </TabPanel>

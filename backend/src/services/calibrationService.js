@@ -3,7 +3,10 @@
  * Aplica polinomios o fórmulas estándar a valores crudos (raw)
  */
 export const applyCalibration = (rawValue, profile) => {
-  if (!profile) return rawValue;
+  // Si no hay perfil o no hay fórmula definida, devolver el valor crudo (Directo)
+  if (!profile || !profile.tipo_formula) {
+    return rawValue;
+  }
 
   const { tipo_formula, c0, c1, c2, c3, c4 } = profile;
 

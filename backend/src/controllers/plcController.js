@@ -1,5 +1,6 @@
 import db from '../config/db.js';
 import { logAudit } from '../utils/auditLogger.js';
+import plcManager from '../services/plcManager.js';
 
 const getPLCs = async (req, res) => {
   try {
@@ -36,7 +37,11 @@ const createPLC = async (req, res) => {
       })
       .returning('*');
 
-    // Registrar en auditoría (Ticket 2.4)
+    // Notificar al motor industrial si está activo
+    if (newPlc.activo) {
+      plcManager.connect(newPlc);
+    }
+
     await logAudit(
       req.user.id,
       'PLC_CREATE',
@@ -67,7 +72,13 @@ const updatePLC = async (req, res) => {
       .update(updates)
       .returning('*');
 
-    // Registrar en auditoría
+    // Sincronizar motor industrial
+    if (updatedPlc.activo) {
+      plcManager.connect(updatedPlc);
+    } else {
+      plcManager.disconnect(updatedPlc.id);
+    }
+
     await logAudit(
       req.user.id,
       'PLC_UPDATE',
@@ -93,7 +104,9 @@ const deletePLC = async (req, res) => {
 
     await db('plcs').where({ id }).del();
 
-    // Registrar en auditoría
+    // Detener polling
+    plcManager.disconnect(id);
+
     await logAudit(
       req.user.id,
       'PLC_DELETE',

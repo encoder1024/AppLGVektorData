@@ -15,11 +15,13 @@
     "@mui/icons-material": "^7.3.9",
     "@mui/material": "^7.3.9",
     "axios": "^1.14.0",
+    "file-saver": "^2.0.5",
     "jwt-decode": "^4.0.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-gauge-component": "^2.0.26",
     "react-router-dom": "^7.13.2",
+    "recharts": "^3.8.1",
     "socket.io-client": "^4.8.3"
   },
   "devDependencies": {

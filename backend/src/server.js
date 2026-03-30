@@ -12,6 +12,11 @@ import calibrationRoutes from './routes/calibrationRoutes.js';
 import sensorRoutes from './routes/sensorRoutes.js';
 import actuatorRoutes from './routes/actuatorRoutes.js';
 
+// Importación de las nuevas rutas
+import auditLogsRoutes from './routes/auditLogsRoutes.js';
+import sensorEventsRoutes from './routes/sensorEventsRoutes.js';
+import actuatorActionsRoutes from './routes/actuatorActionsRoutes.js';
+
 // Importación de Motor Industrial
 import plcManager from './services/plcManager.js';
 
@@ -36,12 +41,17 @@ app.use((req, res, next) => {
   next();
 });
 
-// Registro de Rutas
+// Registro de Rutas existentes
 app.use('/api/auth', authRoutes);
 app.use('/api/plcs', plcRoutes);
 app.use('/api/calibration', calibrationRoutes);
 app.use('/api/sensors', sensorRoutes);
 app.use('/api/actuators', actuatorRoutes);
+
+// Registro de las nuevas rutas
+app.use('/api/audit-logs', auditLogsRoutes);
+app.use('/api/sensor-events', sensorEventsRoutes);
+app.use('/api/actuator-actions', actuatorActionsRoutes);
 
 // Función de Inicialización de Base de Datos y Motor Industrial
 async function initSystem() {

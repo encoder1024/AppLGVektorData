@@ -10,6 +10,7 @@ import ConfigPLCs from './pages/ConfigPLCs';
 import ConfigSensores from './pages/ConfigSensores';
 import ConfigCalibration from './pages/ConfigCalibration';
 import ConfigActuadores from './pages/ConfigActuadores';
+import Historicos from './pages/Historicos'; // Importar el nuevo componente Historicos
 
 // Tema personalizado industrial
 const theme = createTheme({
@@ -52,10 +53,10 @@ function App() {
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
-            
+
             <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
               <Route index element={<Dashboard />} />
-              <Route path="historicos" element={<Typography variant="h4">Históricos (Próximamente)</Typography>} />
+              <Route path="historicos" element={<Historicos />} /> {/* Usar el componente Historicos */}
               <Route path="config/plcs" element={<ConfigPLCs />} />
               <Route path="config/calibracion" element={<ConfigCalibration />} />
               <Route path="config/sensores" element={<ConfigSensores />} />
@@ -63,7 +64,7 @@ function App() {
               <Route path="admin/usuarios" element={<Typography variant="h4">Gestión Usuarios (Próximamente)</Typography>} />
               <Route path="settings" element={<Typography variant="h4">Ajustes App (Próximamente)</Typography>} />
             </Route>
-            
+
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </BrowserRouter>
@@ -73,3 +74,4 @@ function App() {
 }
 
 export default App;
+

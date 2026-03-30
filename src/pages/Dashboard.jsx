@@ -127,15 +127,18 @@ const Dashboard = () => {
                       width: 0.2,
                       padding: 0.02,
                       cornerRadius: 1,
+                      // Define subArcs based on sensor ranges and status colors
                       subArcs: [
-                        { limit: sensor.warning_low || sensor.min_range, color: '#ef4444' },
-                        { limit: sensor.warning_high || sensor.max_range, color: '#10b981' },
-                        { color: '#ef4444' }
-                      ]
+                        { limit: sensor.alert_low || sensor.min_range, color: '#ef4444' }, // Red zone for low alert
+                        { limit: sensor.warning_low || sensor.min_range, color: '#f59e0b' }, // Orange zone for low warning
+                        { limit: sensor.warning_high || sensor.max_range, color: '#10b981' }, // Green zone for normal range
+                        { limit: sensor.alert_high || sensor.max_range, color: '#ef4444' }  // Red zone for high alert (this will be the final arc up to max_range if alert_high is defined)
+                      ].filter(arc => arc.limit !== undefined && arc.limit !== null) // Filter out undefined limits
+                       .sort((a, b) => a.limit - b.limit) // Sort arcs by limit
                     }}
                     labels={{
                       valueLabel: {
-                        style: { fontSize: "35px", fill: status.color, fontWeight: 'bold' },
+                        style: { fontSize: "35px", fill: status.color, fontWeight: 'bold' }, // Value label color matches status
                         formatTextValue: val => `${val.toFixed(1)} ${sensor.unidad_medida || ''}`
                       }
                     }}

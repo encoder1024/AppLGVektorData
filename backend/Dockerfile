@@ -14,5 +14,5 @@ COPY . .
 # Exponemos el puerto donde correrá tu API
 EXPOSE 3000
 
-# Comando para arrancar en modo desarrollo (usando --watch si tenés Node 18+)
-CMD ["node", "--watch", "src/server.js"]
+# Comando para arrancar en modo desarrollo (nodemon con legacy-watch)
+CMD ["npm", "run", "dev"]

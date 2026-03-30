@@ -1,6 +1,6 @@
 services:
   timescaledb:
-    image: timescale/timescaledb-ha:pg14-latest
+    image: timescale/timescaledb:latest-pg14
     container_name: timescaledb-lgvektor
     environment:
       POSTGRES_USER: ${VITE_DB_USER:-user}
@@ -13,34 +13,27 @@ services:
     networks:
       - mynetwork
 
-  # El Frontend (Vite) está en la raíz
   frontend:
     build: 
       context: .
-      dockerfile: Dockerfile # Asegurate que este Dockerfile no tenga 'pg'
+      dockerfile: Dockerfile
     container_name: frontend-lgvektor
     ports:
       - "5173:5173"
     volumes:
       - .:/app
       - /app/node_modules
-      - /app/backend # Evita que el volumen de la raíz pise al backend
+      - /app/backend
     networks:
       - mynetwork
 
-  # El Backend está en la subcarpeta /backend
   backend:
     build: ./backend
     container_name: backend-lgvektor
     ports:
       - "3000:3000"
     env_file: 
-      - .env  # <--- Esto le dice a Docker que busque el archivo en la raíz
-    environment:
-      DB_HOST: timescaledb # Nombre del servicio de DB en la red
-      DB_USER: ${VITE_DB_USER}
-      DB_PASSWORD: ${VITE_DB_PASSWORD}
-      DB_NAME: ${VITE_DB_NAME}
+      - ./backend/.env
     depends_on:
       - timescaledb
     volumes:

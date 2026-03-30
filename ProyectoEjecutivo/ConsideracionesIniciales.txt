@@ -1,0 +1,364 @@
+Objetivo: desarrollar una app PWA que permita mostrar en tiempo real hasta 10 variables de un proceso y al mismo tiempo haga un registro de la información que recibe desde los PLC en una base de datos eficiente para series temporales de los datos de los sensores. La aplicación es parte de una prueba piloto que necesita hablar con 2 PLC que tendrán 5 señales analógicas y 2 señales digitales on/off y que también desde la interface deberá permitir el realizar 3 acciones, 2 de encendido/apagado y una de ajuste analógico. La interface debe ser clara e intuitiva, permitiendo que cada sensor sea procesado por una caja de ajustes, luego pasar por un indicador de la interface y también se le podrán agregar niveles de aviso preventivo y de aviso de alerta. La aplicación tiene que tener roles definidos para los usuarios: ADMIN, LIDER, DEVELOPER y TECHNICIAN. Tendrá un login y solo el ADMIN podrá otorgar los roles a los usuarios. El signup y login se deben manejar desde la base de datos local.
+
+A-Componentes Clave del Desarrollo Industrial
+1-Visualización en Tiempo Real: Uso de gráficos de barras para comparación, gráficos de líneas para tendencias y minigráficos (sparklines) para métricas compactas.
+2-Integración SCADA/IoT: Conexión con sistemas SCADA mediante protocolos industriales o uso de herramientas como Arduino y iQuimiCAD para visualizar procesos (bombas, motores, tuberías) en formato SVG.
+3-Conectividad de Datos: Integración con PLCs y sensores, a menudo mediante una base de datos intermedia como SQL Server o MySQL.
+Interactividad (Drill-down): Capacidad de explorar datos detallados a partir de un resumen de alto nivel. 
+
+B-Pasos para el Desarrollo
+1-Definir Objetivos: Identificar los KPIs críticos para el personal técnico y de producción.
+1.1-Tiene que tener la configuración para soportar servidor local y base de datos local, como servidor remoto y base de datos remota.
+1.2-Componentes de entrada: sensores de presión, temperatura, proximidad, flujo, par, aceleración, velocidad, proximidad y todos llegan a través de un PLC conectado a la PC donde corre el servidor del backend y el servidor del frontend por separado.
+2-Fuentes de Datos: Conectar las fuentes operacionales (PLC, SCADA, ERP).
+3-Diseño UI/UX: Crear pantallas claras que destaquen las alertas y la información crítica.
+3.1-El diseño debe ser robusto y centrado en la usabilidad, facilitando la identificación rápida de problemas en el entorno de producción.
+4-Implementación: Desarrollo frontend y backend para la visualización. 
+
+C-Herramientas y Tecnologías
+1-Plataformas: Geckoboard, Power BI, .
+2-Formatos: Gráficos vectoriales SVG para animar elementos industriales como calderas, motores, bombas, botones de acción, mezcladores y tuberías.
+3-Stack tecnológico: React, Node.js, Material UI, Recharts, postgres(TimescaleDB) y local server separado para backend y frontend.
+3.1-Componentes para medir temperatura, presión, velocidad, flujo con gauge components:
+3.1.1 react-gauge-component	Modern UI	High customization & easy animations
+3.1.2 react-gauge-chart	Speed	Minimal setup, D3-powered
+3.1.3 MUI X Charts	MUI Ecosystem	Integration with Material UI themes 
+4-Base de datos local corriendo en un servidor local en la pc.
+5-Servidor local corriendo en la pc.
+
+Arquitectura sugerida:
+Captura: Un script en Node.js (backend) que reciba las señales y las inserte en TimescaleDB.
+Visualización: Tu UI en React consulta al backend para mostrar gráficos de tendencia (usando librerías como Recharts o Apache ECharts).
+Análisis: Al tener los datos estructurados por tiempo, aplicar algoritmos de mantenimiento preventivo (como detección de anomalías) será mucho más simple.
+
+Ejemplo del instrumento para medir temperatura, presiones, flujo, etc:
+
+npm install react-gauge-component
+
+<GaugeComponent
+  value={104.1}
+  type="grafana"
+  minValue={0}
+  maxValue={150}
+  arc={{
+      width: 0.44,
+      cornerRadius: 8,
+      nbSubArcs: 100,
+      colorArray: ["#ff00ff", "#00ffff", "#ffff00", "#ff0080"],
+      padding: 0.03,
+      subArcsStrokeWidth: 0.5,
+      subArcsStrokeColor: "#000000",
+      effects: { glow: true, glowBlur: 1, glowSpread: 2 },
+      subArcs: []
+    }}
+  labels={{
+      valueLabel: {
+        matchColorWithArc: true,
+        style: { fontSize: "29px", fontWeight: "bold" },
+        offsetY: 25,
+        animateValue: true
+      },
+      tickLabels: {
+        type: "outer",
+        hideMinMax: false,
+        autoSpaceTickLabels: true,
+        ticks: [
+          { value: 0 },
+          { value: 25 },
+          { value: 50 },
+          { value: 75 },
+          { value: 100 },
+          { value: 125 },
+          { value: 150 }
+        ]
+      }
+    }}
+  pointers={[
+      {
+        value: 104.1,
+        type: "needle",
+        color: "#F5CD19",
+        baseColor: "#ffffff",
+        length: 0.87,
+        width: 24,
+        strokeWidth: 2,
+        strokeColor: "#000000"
+      }
+    ]}
+/>
+
+Refinamimento de la arquitectura:
+
+Para un entorno de Industria 4.0 donde el protocolo del PLC es una variable, necesitás una capa de Middleware o "Gateway" entre el PLC y tu base de datos. No es eficiente (ni seguro) que React o tu API hablen directamente con el hardware.
+Aquí la arquitectura recomendada para que sea configurable y escalable:
+1. El "Traductor" Industrial: Node-RED
+Te recomiendo fuertemente usar Node-RED como servidor local intermedio.
+Por qué: Tiene nodos (librerías) listos para Modbus, OPC-UA, S7 (Siemens) y EtherNet/IP.
+Configurabilidad: Podés crear una interfaz sencilla donde el usuario elija el protocolo y la IP del PLC sin programar desde cero.
+Flujo: PLC → Node-RED → Base de Datos (TimescaleDB/InfluxDB).
+2. Base de Datos: TimescaleDB (PostgreSQL)
+Dado que mencionaste mantenimiento preventivo, vas a necesitar hacer cálculos complejos (regresiones, promedios móviles, detección de picos).
+TimescaleDB es ideal porque te permite usar SQL estándar. Es mucho más fácil encontrar analistas o librerías de React que manejen SQL que lenguajes específicos de nicho.
+Maneja billones de filas mediante "hypertables" (fragmenta los datos por tiempo automáticamente para que las consultas no se vuelvan lentas).
+3. Estructura de la aplicación
+Para que sea configurable entre Local y Remoto, organizalo así:
+Capa de Adquisición (Local): Un contenedor de Docker con Node-RED que lea el PLC y guarde en la DB local.
+Capa de Datos (Híbrida): Tu backend en Node.js/Express con un archivo .env que apunte a localhost (ahora) o a una IP/URL externa (después).
+Capa de Usuario (React UI): Un panel de configuración donde definas:
+Protocolo (Modbus TCP, RTU, OPC-UA).
+Direcciones de memoria (Registers/Nodes).
+Intervalo de muestreo (ej. cada 100ms o 1s).
+4. Recomendación de Hardware Local
+Si vas a correr esto en una planta industrial, evitá una PC de oficina común. Usá:
+IPC (Industrial PC) o una Raspberry Pi 4/5 con SSD (no uses tarjetas SD para bases de datos, se rompen con la escritura constante).
+Corré todo sobre Docker; así, si el hardware falla, movés el contenedor a otra máquina y en 5 minutos estás operando de nuevo.
+
+
+Para que tu sistema sea profesional y "llave en mano", la clave es que el Backend (Node.js) sea un motor genérico que lea una configuración (JSON o DB) y actúe en consecuencia.
+Aquí te muestro cómo estructurar el archivo de configuración y cómo el backend decidiría qué hacer:
+1. El archivo de configuración (config.json)
+Este archivo viviría en tu servidor local. La UI de React podría modificarlo a través de una ruta de API (ej. POST /api/config).
+json
+{
+  "connection_mode": "local", 
+  "database": {
+    "local_url": "postgresql://user:pass@localhost:5432/industry_db",
+    "remote_url": "postgresql://admin:securepass@://cloud-server.com",
+    "use_remote": false
+  },
+  "plc_config": {
+    "protocol": "modbus-tcp", 
+    "ip": "192.168.1.50",
+    "port": 502,
+    "scan_rate_ms": 1000,
+    "tags": [
+      { "name": "temp_motor_1", "address": 40001, "type": "float" },
+      { "name": "status_pump_1", "address": 10001, "type": "bool" }
+    ]
+  }
+}
+Usa el código con precaución.
+
+2. Lógica en el Backend (Node.js)
+Usando una librería como node-modbus o node-opcua, tu servidor decidiría qué driver cargar dinámicamente:
+javascript
+// Ejemplo conceptual de selector de protocolo
+const config = require('./config.json');
+let plcClient;
+
+if (config.plc_config.protocol === 'modbus-tcp') {
+    plcClient = setupModbus(config.plc_config);
+} else if (config.plc_config.protocol === 'opc-ua') {
+    plcClient = setupOpcUa(config.plc_config);
+}
+
+// Selector de Base de Datos
+const dbUrl = config.database.use_remote 
+    ? config.database.remote_url 
+    : config.database.local_url;
+
+const db = connectToDatabase(dbUrl); // Aquí conectarías a TimescaleDB
+Usa el código con precaución.
+
+3. Visualización en React (La UI)
+En tu frontend de React, crearías un panel de "Ajustes de Comunicación".
+Campos dinámicos: Si el usuario elige "Modbus", mostrás campos para IP y Puerto. Si elige "OPC-UA", mostrás el campo para el "Endpoint URL".
+Switch Local/Remoto: Un simple botón que cambie el valor use_remote en el JSON para que el backend empiece a enviar los datos de las señales a la nube en lugar de (o además de) la base local.
+4. ¿Por qué este enfoque es mejor para Mantenimiento Preventivo?
+Al tener las Tags (nombres de señales) definidas en la configuración:
+Abstracción: Tu código de análisis no dice "leé el registro 40001", dice "leé temp_motor_1".
+Escalabilidad: Si mañana agregás 10 sensores más, solo actualizás el JSON (vía UI), no necesitás reprogramar ni reiniciar el servidor.
+Análisis: Al guardar en TimescaleDB, podés hacer consultas SQL como:
+SELECT time_bucket('1h', time) AS hora, AVG(valor) FROM señales WHERE tag='temp_motor_1' GROUP BY hora;
+Esto te da el promedio por hora de una señal analógica en milisegundos.
+
+TimescaleDB is an open-source extension for PostgreSQL specifically designed to handle time-series data. It transforms PostgreSQL into a high-performance time-series database while maintaining full SQL compatibility and the reliability of the Postgres ecosystem. 
+
+Key Features
+Hypertables: Automatically partitions data into time-based "chunks" to maintain high ingest rates and fast queries even as data grows to billions of rows.
+Native Compression: Uses columnar storage to achieve 90%+ compression rates, significantly reducing storage costs and speeding up analytical queries.
+Continuous Aggregates: Automatically refreshes materialized views for time-series data, providing real-time aggregates (e.g., hourly averages) without re-scanning raw data.
+Retention Policies: Simplifies data lifecycle management by automatically dropping old data based on user-defined time windows.
+Hyperfunctions: Adds specialized SQL functions for time-series analysis, such as time_bucket() for easy grouping by time intervals. 
+
+Benefits vs. Vanilla PostgreSQL
+Feature 	Vanilla PostgreSQL	TimescaleDB
+Ingest Performance	Slows down as tables grow	Stays constant via automatic partitioning
+Storage	Row-based (no native compression)	Columnar compression (up to 90% savings)
+Partitioning	Manual and complex to manage	Automatic and transparent (Hypertables)
+Queries	Scans large tables/indexes	Prunes chunks to scan only relevant data
+Getting Started
+Installation: You can install it as an extension on a self-hosted Postgres instance using Docker or package managers like apt or brew.
+Enable Extension: Run CREATE EXTENSION IF NOT EXISTS timescaledb; within your database.
+Create a Hypertable: Convert a standard table into a hypertable by specifying the time column:
+sql
+SELECT create_hypertable('your_table_name', 'time_column_name');
+
+Las normas de calidad en la digitalización industrial 4.0 se centran en la integración de tecnologías avanzadas (IoT, IA, Big Data) con estándares de gestión, siendo la ISO 9001:2015 la base fundamental para el SGC, evolucionando hacia la "Calidad 4.0". Estas normas aseguran interoperabilidad, seguridad de datos y trazabilidad en tiempo real, destacando la adopción de normativas técnicas específicas para la transformación digital. 
+
+Normas y Estándares Clave:
+ISO 9001:2015 (Sistema de Gestión de Calidad): Aunque tradicional, es el pilar para integrar la transformación digital y la Calidad 4.0 en los procesos de la empresa.
+UNE 0060 y UNE 0061 (España): Especificaciones técnicas que definen los requisitos para considerar una industria como "digital".
+ISO/IEC 27001 (Seguridad de la Información): Fundamental para proteger los datos de procesos automatizados, sensores IoT y sistemas en la nube.
+ISO 14001 (Gestión Ambiental): Crucial para la sostenibilidad, promoviendo la eficiencia energética y reducción de residuos en entornos 4.0.
+Pasaporte Digital de Producto (DPP) (Reglamento UE ESPR): Estándar emergente para garantizar la trazabilidad y sostenibilidad de los productos para 2027/2028.
+Estándares de Interoperabilidad (Serie ISO/IEC): Facilitan la comunicación entre máquinas, sistemas y personas. 
+
+Enfoque de la Calidad 4.0:
+La Calidad 4.0 aplica tecnologías digitales para automatizar la recolección de datos y mejorar la toma de decisiones, utilizando herramientas como auditorías digitales, trazabilidad automática y análisis de datos en la nube, superando las prácticas tradicionales de gestión documental. La Calidad 4.0 no reemplaza a la ISO 9001, sino que la potencia.
+
+podríamos poner una página de configuración donde elegimos la marca del PLC y el protocolo de comunicación y con esos datos, podríamos usar una librería de modo dinámico en el plcSservice.js?
+Poder, se puede, pero en el mundo de Node.js y PLCs, "dinámico" no significa que una sola librería haga todo, sino que tu plcService.js actúe como un Adaptador (Pattern Adapter).
+Dado que cada protocolo (Modbus, S7, Ethernet/IP) usa librerías de bajo nivel distintas que acceden a la tarjeta de red de forma diferente, la estrategia profesional es la siguiente:
+1. La Estrategia: "Driver Manager"
+No cargás las librerías en tiempo de ejecución (porque eso rompería el empaquetado de Docker), sino que las tenés todas instaladas y seleccionás cuál usar según la configuración que recibas del Frontend.
+2. Estructura del plcService.js
+Podés crear una clase que gestione la conexión basándose en la configuración que el usuario guarde en la base de datos:
+javascript
+import Modbus from 'jsmodbus'; // Para Modbus
+import nodes7 from 'nodes7';   // Para Siemens
+import net from 'net';
+
+class PLCManager {
+  constructor() {
+    this.client = null;
+    this.protocol = null;
+  }
+
+  async connect(config) {
+    // config viene de tu página de React: { brand: 'Siemens', ip: '192.168.1.10', protocol: 'S7' }
+    this.protocol = config.protocol;
+
+    if (this.protocol === 'Modbus') {
+      const socket = new net.Socket();
+      this.client = new Modbus.client.TCP(socket);
+      socket.connect({ host: config.ip, port: 502 });
+      console.log("Conectado vía Modbus a", config.ip);
+    } 
+    else if (this.protocol === 'S7') {
+      this.client = new nodes7();
+      this.client.initiateConnection({ host: config.ip, port: 102, rack: 0, slot: 1 }, (err) => {
+        if (err) console.error(err);
+        console.log("Conectado a Siemens S7");
+      });
+    }
+  }
+
+  async readData(address) {
+    if (this.protocol === 'Modbus') {
+      return await this.client.readHoldingRegisters(address, 1);
+    }
+    // ... lógica para otros protocolos
+  }
+}
+
+export default new PLCManager();
+Usa el código con precaución.
+
+3. Implementación en la Base de Datos
+En tu TimescaleDB, deberías tener una tabla de configuracion_plc:
+id, nombre, marca, protocolo, ip, puerto.
+4. Flujo de trabajo:
+Frontend: El usuario elige "Siemens" y "S7" en un formulario y le da a "Guardar".
+Backend: Recibe el JSON, lo guarda en TimescaleDB y llama a PLCManager.connect(config).
+Servicio: El PLCManager cierra cualquier conexión vieja y abre la nueva usando la librería correspondiente.
+Consideración para Docker:
+Para que esto funcione con todas las marcas, tu backend/package.json debe incluir todas las librerías necesarias:
+bash
+npm install jsmodbus nodes7 ethernet-ip node-opcua
+Usa el código con precaución.
+
+(No te preocupes por el peso, en el backend de Docker esto no afecta el rendimiento).
+
+Para guardar la configuración de tus PLCs en TimescaleDB, lo ideal es una tabla relacional estándar. Aunque Timescale es para series temporales, las configuraciones son datos "estáticos" que viven en tablas normales de PostgreSQL.
+Aquí tenés el diseño de la tabla y cómo crearla:
+1. Script SQL para la tabla dispositivos_plc
+Ejecutá esto en tu base de datos (podés hacerlo desde un cliente como DBeaver o desde una ruta en tu server.js):
+sql
+CREATE TABLE IF NOT EXISTS dispositivos_plc (
+    id SERIAL PRIMARY KEY,
+    nombre VARCHAR(100) NOT NULL,       -- Ej: "PLC Prensa 1"
+    marca VARCHAR(50) NOT NULL,        -- Ej: "Siemens", "Schneider"
+    protocolo VARCHAR(50) NOT NULL,    -- Ej: "S7", "Modbus-TCP", "Ethernet/IP"
+    ip_address INET NOT NULL,          -- Tipo especial para IPs
+    puerto INTEGER DEFAULT 502,        -- 502 (Modbus), 102 (S7), 44818 (EIP)
+    unidad_id INTEGER DEFAULT 1,       -- Para Modbus (Slave ID)
+    activo BOOLEAN DEFAULT true,
+    creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+Usa el código con precaución.
+
+2. ¿Cómo insertar los datos desde el Backend?
+En tu server.js, podés crear un endpoint POST para que el formulario de tu página de configuración guarde los datos:
+javascript
+app.post('/api/config/plc', async (req, res) => {
+  const { nombre, marca, protocolo, ip, puerto, unidad_id } = req.body;
+  
+  try {
+    const query = `
+      INSERT INTO dispositivos_plc (nombre, marca, protocolo, ip_address, puerto, unidad_id)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING *;
+    `;
+    const values = [nombre, marca, protocolo, ip, puerto, unidad_id];
+    const result = await pool.query(query, values);
+    
+    // Opcional: Al guardar, podrías decirle al PLCManager que intente conectar
+    // plcManager.connect(result.rows[0]);
+    
+    res.json({ message: "Configuración guardada", data: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+Usa el código con precaución.
+
+3. Bonus: La tabla de Lecturas (Serie Temporal)
+Como vas a usar TimescaleDB, necesitás una tabla donde se guarden los valores que leés de esos PLCs cada X segundos. Esta sí debe ser una Hypertable:
+sql
+CREATE TABLE lecturas_plc (
+    tiempo TIMESTAMPTZ NOT NULL,
+    plc_id INTEGER REFERENCES dispositivos_plc(id),
+    tag_nombre VARCHAR(50), -- Ej: "Temperatura_Motor"
+    valor DOUBLE PRECISION
+);
+
+-- Convertimos a Hypertable para que Timescale vuele al consultar millones de datos
+SELECT create_hypertable('lecturas_plc', 'tiempo');
+
+3.1.1 UI requerimientos para el diseño y codificación
+Dado que es una PWA de una sola página (SPA) para un ERP, la clave es la gestión de estados para que el paso entre el Login y el Dashboard sea instantáneo.
+
+Estructura Global (Shell de la PWA)
+Describe el "contenedor" que persiste en toda la aplicación:
+Layout: Un diseño responsivo con una barra lateral (Sidebar) colapsable a la izquierda y una barra superior (TopBar) fija.
+
+Navegación: La Sidebar contiene iconos y etiquetas para: Ventas, E-commerce, Inventario, Facturación, Turnos, Clientes, Reportes y Configuración.
+
+Tema: Minimalista, usando una paleta de colores profesional (ej. Azul marino #1e293b para la barra lateral y blanco humo #f8fafc para el fondo).
+
+Flujo de Acceso (Sign-In / Sign-Up)
+Como es una SPA, estas pantallas deben tratarse como modales a pantalla completa o vistas condicionales que bloquean el dashboard:
+Sign-In (Inicio de Sesión):
+
+Centro: Tarjeta (Card) blanca con sombra suave.
+
+Campos: Email (Input con icono de sobre), Contraseña (Input con opción de "ver contraseña").
+
+Acciones: Botón "Entrar" (color primario), enlace "Olvidé mi contraseña" y botón secundario "Crear cuenta".
+
+Sign-Up (Registro):
+
+Campos: Nombre de la empresa, Nombre del administrador, Email, Contraseña (con validador de seguridad).
+
+Extra: Checkbox de "Acepto términos y condiciones".
+
+RPC (PostgreSQL functions) para operaciones intensivas de datos internos
+
+Trazabilidad y Normas ISO 9000
+El frontend debe garantizar que toda petición a la API de Supabase esté autenticada. El cliente @supabase/supabase-js gestiona automáticamente el envío del JWT (JSON Web Token) del usuario logueado. Este token permite al backend:
+
+Identificar al usuario a través de auth.uid().
+Aplicar las políticas de RLS correspondientes a su rol.
+Registrar en la tabla del esquema para auditoria, a través de los triggers, qué usuario (user_id) realizó qué acción (action), sobre qué acción realizó sobre que actuador (record_id) y en qué momento (timestamp) y el resto de columnas que tenga definida la tabla en el esquema.
+Esto crea un rastro de auditoría completo para cada acción de escritura en la base de datos, cumpliendo con el principio de trazabilidad.

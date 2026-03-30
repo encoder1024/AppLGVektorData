@@ -1,58 +1,93 @@
 import express from 'express';
-import pg from 'pg';
 import cors from 'cors';
+import 'dotenv/config'; 
+import { createServer } from 'http';
+import { Server } from 'socket.io';
+import db from './config/db.js';
+
+// Importación de rutas
+import authRoutes from './routes/authRoutes.js';
+import plcRoutes from './routes/plcRoutes.js';
+import calibrationRoutes from './routes/calibrationRoutes.js';
+import sensorRoutes from './routes/sensorRoutes.js';
+import actuatorRoutes from './routes/actuatorRoutes.js';
+
+// Importación de las nuevas rutas
+import auditLogsRoutes from './routes/auditLogsRoutes.js';
+import sensorEventsRoutes from './routes/sensorEventsRoutes.js';
+import actuatorActionsRoutes from './routes/actuatorActionsRoutes.js';
+
+// Importación de Motor Industrial
+import plcManager from './services/plcManager.js';
 
 const app = express();
-const port = 3000;
+const httpServer = createServer(app);
+const port = process.env.PORT || 3000;
 
-// Middleware
-app.use(cors()); // Permite que el Frontend (puerto 5173) consulte al Backend (3000)
+// Configuración de WebSockets (Socket.io)
+const io = new Server(httpServer, {
+  cors: {
+    origin: "*", // En producción, especificar la URL del frontend
+    methods: ["GET", "POST"]
+  }
+});
+
+app.use(cors()); 
 app.use(express.json());
 
-console.log("El host es:", process.env.VITE_DB_HOST);
-
-// backend/server.js
-
-const pool = new pg.Pool({
-  // Prioridad: 1. Variable de Docker, 2. El nombre del servicio, 3. localhost (solo para local)
-  host: process.env.DB_HOST || 'timescaledb', 
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  port: 5432,
+// Logger de peticiones (Debug)
+app.use((req, res, next) => {
+  console.log(`DEBUG: Recibida petición ${req.method} en ${req.url}`);
+  next();
 });
 
-// Agregá este log para debuguear en la terminal de Docker
-console.log('Intentando conectar a la DB en:', pool.options.host);
+// Registro de Rutas existentes
+app.use('/api/auth', authRoutes);
+app.use('/api/plcs', plcRoutes);
+app.use('/api/calibration', calibrationRoutes);
+app.use('/api/sensors', sensorRoutes);
+app.use('/api/actuators', actuatorRoutes);
 
+// Registro de las nuevas rutas
+app.use('/api/audit-logs', auditLogsRoutes);
+app.use('/api/sensor-events', sensorEventsRoutes);
+app.use('/api/actuator-actions', actuatorActionsRoutes);
 
-// Ruta de prueba para verificar la conexión
-app.get('/api/status', async (req, res) => {
-  try {
-    const result = await pool.query('SELECT NOW() as now');
-    res.json({ 
-      status: 'Online', 
-      db_time: result.rows[0].now,
-      message: 'Conexión exitosa con TimescaleDB' 
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ status: 'Error', error: err.message });
+// Función de Inicialización de Base de Datos y Motor Industrial
+async function initSystem() {
+  let retries = 15;
+  while (retries > 0) {
+    try {
+      await db.raw('SELECT 1');
+      
+      // 1. Base de Datos
+      await db.migrate.latest();
+      await db.seed.run();
+      console.log('🚀 Base de datos industrial lista.');
+
+      // 2. Inicializar Motor PLC
+      plcManager.setIO(io);
+      await plcManager.initAll();
+      console.log('🧠 Motor de Adquisición PLC iniciado.');
+
+      return; 
+    } catch (err) {
+      retries -= 1;
+      console.log(`⚠️ Esperando DB... (${retries})`);
+      await new Promise(resolve => setTimeout(resolve, 10000));
+    }
   }
+}
+
+// Socket.io eventos
+io.on('connection', (socket) => {
+  console.log(`🔌 Cliente conectado: ${socket.id}`);
+  socket.on('disconnect', () => console.log('🔌 Cliente desconectado'));
 });
 
-// Ejemplo de ruta para obtener datos (ajustá según tu tabla)
-app.get('/api/data', async (req, res) => {
-  try {
-    const result = await pool.query('SELECT * FROM tu_tabla LIMIT 10');
-    res.json(result.rows);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-const HOST = '0.0.0.0'; // Escuchar en todas las interfaces de red del contenedor
-
-app.listen(port, HOST, () => {
-  console.log(`🚀 Backend corriendo en http://localhost:${port}`);
+const HOST = '0.0.0.0';
+initSystem().then(() => {
+  httpServer.listen(port, HOST, () => {
+    console.log(`🚀 Servidor Industrial Full-Stack en puerto ${port}`);
+  });
 });

@@ -13,6 +13,7 @@ import {
   Chip,
   Stack
 } from '@mui/material';
+import { io } from 'socket.io-client';
 import api from '../services/api';
 
 const backgroundImageUrl = new URL('../../ProyectoEjecutivo/EstructuraProyectoPiloto-rev00.jpeg', import.meta.url).href;
@@ -40,6 +41,44 @@ const inferStatusFromItems = (items) => {
   return 'yellow';
 };
 
+const parseActuatorState = (action) => {
+  if (!action) {
+    return false;
+  }
+
+  const details = action.details || {};
+  const candidateValue = [
+    action.state,
+    action.value,
+    details.newValue,
+    details.value,
+    details.state,
+    details.new_state,
+    details.targetValue,
+    details.target_value,
+    details.output,
+    details.enabled
+  ].find((value) => value !== undefined && value !== null);
+
+  const numericValue =
+    typeof candidateValue === 'number'
+      ? candidateValue
+      : typeof candidateValue === 'string' && candidateValue.trim() !== '' && !Number.isNaN(Number(candidateValue))
+        ? Number(candidateValue)
+        : null;
+
+  const normalizedText = String(candidateValue ?? action.action_type ?? '')
+    .trim()
+    .toUpperCase();
+
+  return (
+    candidateValue === true ||
+    numericValue === 1 ||
+    ['ON', 'TRUE', 'OPEN', 'START', 'ENABLE', 'ENABLED', 'HIGH'].includes(normalizedText) ||
+    normalizedText.includes('PULSE')
+  );
+};
+
 const normalizeRows = (items, fallbackSecondary) =>
   items.map((item) => ({
     primary: item.nombre || item.tag_name || 'Elemento',
@@ -58,10 +97,61 @@ const findByNameCandidates = (items, field, candidates) => {
   );
 };
 
+const findActuatorByCandidates = (items, plcCandidates, actuatorCandidates) => {
+  const normalizedPlcCandidates = plcCandidates.map((candidate) => candidate.toUpperCase());
+  const normalizedActuatorCandidates = actuatorCandidates.map((candidate) => candidate.toUpperCase());
+
+  return (
+    items.find((item) => {
+      const actuatorName = String(item?.nombre || '').toUpperCase();
+      const plcName = String(item?.plc_nombre || '').toUpperCase();
+      const matchesActuator = normalizedActuatorCandidates.includes(actuatorName);
+      const matchesPlc = normalizedPlcCandidates.some(
+        (candidate) => plcName === candidate || plcName.includes(candidate)
+      );
+      return matchesActuator && matchesPlc;
+    }) ||
+    items.find((item) => {
+      const actuatorName = String(item?.nombre || '').toUpperCase();
+      return normalizedActuatorCandidates.includes(actuatorName);
+    }) ||
+    null
+  );
+};
+
+const getWorstStatus = (statuses, fallback = 'red') => {
+  if (statuses.length === 0) {
+    return fallback;
+  }
+  if (statuses.includes('red')) {
+    return 'red';
+  }
+  if (statuses.includes('yellow')) {
+    return 'yellow';
+  }
+  return 'green';
+};
+
+const formatSnapshotValue = (value) => {
+  if (value === null || value === undefined || value === '') {
+    return 'N/A';
+  }
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false';
+  }
+  if (typeof value === 'object') {
+    return JSON.stringify(value, null, 2);
+  }
+  return String(value);
+};
+
 const SaludSistema = () => {
   const [plcs, setPlcs] = useState([]);
   const [sensors, setSensors] = useState([]);
   const [actuators, setActuators] = useState([]);
+  const [latestActuatorActions, setLatestActuatorActions] = useState({});
+  const [healthSnapshotTime, setHealthSnapshotTime] = useState(null);
+  const [healthSnapshots, setHealthSnapshots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedComponent, setSelectedComponent] = useState(null);
@@ -71,15 +161,28 @@ const SaludSistema = () => {
       setLoading(true);
       setError('');
       try {
-        const [plcsResponse, sensorsResponse, actuatorsResponse] = await Promise.all([
+        const [plcsResponse, sensorsResponse, actuatorsResponse, actuatorActionsResponse, healthResponse] = await Promise.all([
           api.get('/plcs'),
           api.get('/sensors'),
-          api.get('/actuators')
+          api.get('/actuators'),
+          api.get('/actuator-actions'),
+          api.get('/system-health/latest')
         ]);
+
+        const lastActionByActuator = {};
+        (actuatorActionsResponse.data || []).forEach((action) => {
+          if (!action.actuator_id || lastActionByActuator[action.actuator_id]) {
+            return;
+          }
+          lastActionByActuator[action.actuator_id] = action;
+        });
 
         setPlcs(plcsResponse.data || []);
         setSensors(sensorsResponse.data || []);
         setActuators(actuatorsResponse.data || []);
+        setLatestActuatorActions(lastActionByActuator);
+        setHealthSnapshotTime(healthResponse.data?.snapshot_time || null);
+        setHealthSnapshots(healthResponse.data?.snapshots || []);
       } catch (err) {
         setError('Error al cargar la salud del sistema.');
       } finally {
@@ -88,6 +191,35 @@ const SaludSistema = () => {
     };
 
     fetchHealthData();
+  }, []);
+
+  const healthSnapshotMap = useMemo(
+    () =>
+      Object.fromEntries(
+        healthSnapshots.map((snapshot) => [`${snapshot.component_type}:${snapshot.component_id}`, snapshot])
+      ),
+    [healthSnapshots]
+  );
+
+  useEffect(() => {
+    const socket = io('http://localhost:3000');
+
+    socket.on('actuator_update', (data) => {
+      setLatestActuatorActions((prev) => ({
+        ...prev,
+        [data.actuator_id]: {
+          actuator_id: data.actuator_id,
+          action_type: 'SET_STATE',
+          timestamp: data.time,
+          details: {
+            state: data.state,
+            value: data.value
+          }
+        }
+      }));
+    });
+
+    return () => socket.disconnect();
   }, []);
 
   const components = useMemo(() => {
@@ -103,15 +235,58 @@ const SaludSistema = () => {
     const pVektor02 =
       findByNameCandidates(zoneAPLCs, 'nombre', ['PVEKTOR02', 'PVECTOR02']) ||
       findByNameCandidates(plcs, 'nombre', ['PVEKTOR02', 'PVECTOR02']);
-    const pVektor02Actuators = zoneAActuators.slice(0, 3);
+    const alarmaRoja1 = [
+      findActuatorByCandidates(zoneAActuators, ['PVEKTOR01', 'PVECTOR01'], ['ACT01'])
+    ].filter(Boolean);
+    const alarmaRoja2 = [
+      findActuatorByCandidates(zoneAActuators, ['PVEKTOR01', 'PVECTOR01'], ['ACT02'])
+    ].filter(Boolean);
+    const alarmaRoja3 = [
+      findActuatorByCandidates(zoneAActuators, ['PVEKTOR01', 'PVECTOR01'], ['ACT03'])
+    ].filter(Boolean);
+    const pVektor01Actuators = [...alarmaRoja1, ...alarmaRoja2, ...alarmaRoja3];
+    const getActuatorSignalStatus = (actuator) => {
+      if (!actuator) {
+        return 'red';
+      }
+      return parseActuatorState(latestActuatorActions[actuator.id]) ? 'green' : 'red';
+    };
     const plc01S01 =
       findByNameCandidates(zoneBPLCs, 'nombre', ['PLC01-S01', 'PLC01S01', 'PLC01']) ||
       findByNameCandidates(plcs, 'nombre', ['PLC01-S01', 'PLC01S01', 'PLC01']) ||
       zoneBPLCs[0] ||
       null;
-    const sensorModbusCaudal = zoneBSensors.find((sensor) =>
-      (sensor.tag_name || '').toUpperCase().includes('CAUDAL')
-    ) || zoneBSensors[0] || null;
+    const instrumentacionSectorBSensors = zoneBSensors.filter((sensor) =>
+      ['CAUD02', 'GAS001'].includes(String(sensor.tag_name || '').toUpperCase())
+    );
+    const sensorModbusCaudalSensors = zoneBSensors.filter(
+      (sensor) =>
+        !instrumentacionSectorBSensors.some((assignedSensor) => assignedSensor.id === sensor.id)
+    );
+    const getSnapshotStatus = (componentType, componentId) =>
+      healthSnapshotMap[`${componentType}:${componentId}`]?.status || null;
+    const buildSnapshotEntries = (sources) =>
+      sources
+        .map(({ componentType, item, label }) => {
+          if (!item?.id) {
+            return null;
+          }
+          const snapshot = healthSnapshotMap[`${componentType}:${item.id}`];
+          if (!snapshot) {
+            return null;
+          }
+          return {
+            label: label || item.nombre || item.tag_name || snapshot.component_name,
+            snapshot
+          };
+        })
+        .filter(Boolean);
+    const inferStatusFromSnapshots = (componentType, items, fallbackStatus) => {
+      const snapshotStatuses = items
+        .map((item) => (item?.id ? getSnapshotStatus(componentType, item.id) : null))
+        .filter(Boolean);
+      return snapshotStatuses.length > 0 ? getWorstStatus(snapshotStatuses, fallbackStatus) : fallbackStatus;
+    };
 
     return [
       {
@@ -119,99 +294,149 @@ const SaludSistema = () => {
         title: 'Thermopac 1',
         position: { top: '8.5%', left: '22.2%', width: '7%', height: '18%' },
         led: { top: '7.5%', left: '20.7%' },
-        status: inferStatusFromItems(zoneASensors.slice(0, 1)),
+        status: inferStatusFromSnapshots('SENSOR', zoneASensors.slice(0, 1), inferStatusFromItems(zoneASensors.slice(0, 1))),
         description: 'Sensor de temperatura del primer thermopac del Sector A.',
         metrics: [{ label: 'Sensores asociados', value: zoneASensors.slice(0, 1).length }],
         rows: normalizeRows(zoneASensors.slice(0, 1), 'Sector A'),
+        snapshotEntries: buildSnapshotEntries(zoneASensors.slice(0, 1).map((sensor) => ({ componentType: 'SENSOR', item: sensor }))),
       },
       {
         key: 'thermopac-2',
         title: 'Thermopac 2',
         position: { top: '8.5%', left: '32.5%', width: '7%', height: '18%' },
         led: { top: '7.5%', left: '31.1%' },
-        status: inferStatusFromItems(zoneASensors.slice(1, 2)),
+        status: inferStatusFromSnapshots('SENSOR', zoneASensors.slice(1, 2), inferStatusFromItems(zoneASensors.slice(1, 2))),
         description: 'Sensor de temperatura del segundo thermopac del Sector A.',
         metrics: [{ label: 'Sensores asociados', value: zoneASensors.slice(1, 2).length }],
         rows: normalizeRows(zoneASensors.slice(1, 2), 'Sector A'),
+        snapshotEntries: buildSnapshotEntries(zoneASensors.slice(1, 2).map((sensor) => ({ componentType: 'SENSOR', item: sensor }))),
       },
       {
         key: 'thermopac-3',
         title: 'Thermopac 3',
         position: { top: '8.5%', left: '42.9%', width: '7%', height: '18%' },
         led: { top: '7.5%', left: '41.5%' },
-        status: inferStatusFromItems(zoneASensors.slice(2, 3)),
+        status: inferStatusFromSnapshots('SENSOR', zoneASensors.slice(2, 3), inferStatusFromItems(zoneASensors.slice(2, 3))),
         description: 'Sensor de temperatura del tercer thermopac del Sector A.',
         metrics: [{ label: 'Sensores asociados', value: zoneASensors.slice(2, 3).length }],
         rows: normalizeRows(zoneASensors.slice(2, 3), 'Sector A'),
-      },
-      {
-        key: 'pvektor01',
-        title: 'PVektor01',
-        position: { top: '8%', left: '53.9%', width: '18%', height: '16%' },
-        led: { top: '6.8%', left: '67.5%' },
-        status: pVektor01 ? 'green' : 'red',
-        description: 'Placa PVektor01 del Sector A. Concentra sensado y comunicaciones locales.',
-        metrics: [{ label: 'PLC asociado', value: pVektor01 ? 1 : 0 }],
-        rows: normalizeRows(pVektor01 ? [pVektor01] : [], 'Sector A'),
+        snapshotEntries: buildSnapshotEntries(zoneASensors.slice(2, 3).map((sensor) => ({ componentType: 'SENSOR', item: sensor }))),
       },
       {
         key: 'pvektor02',
         title: 'PVektor02',
-        position: { top: '28%', left: '53.9%', width: '18%', height: '16%' },
-        led: { top: '26.8%', left: '67.5%' },
-        status: inferStatusFromItems(pVektor02 ? [pVektor02] : []),
-        description: 'Placa PVektor02 del Sector A. Controla alarmas y salidas digitales.',
+        position: { top: '8%', left: '53.9%', width: '18%', height: '16%' },
+        led: { top: '6.8%', left: '67.5%' },
+        status: getWorstStatus(
+          [
+            ...(pVektor02 ? [getSnapshotStatus('PLC', pVektor02.id)] : []),
+            ...zoneASensors.slice(0, 3).map((sensor) => getSnapshotStatus('SENSOR', sensor.id)).filter(Boolean)
+          ],
+          inferStatusFromItems([
+            ...(pVektor02 ? [pVektor02] : []),
+            ...zoneASensors.slice(0, 3)
+          ])
+        ),
+        description: 'Placa PVektor02 del Sector A. Concentra los tres sensores de temperatura thermopac.',
         metrics: [
           { label: 'PLC asociado', value: pVektor02 ? 1 : 0 },
-          { label: 'Actuadores asociados', value: pVektor02Actuators.length }
+          { label: 'Sensores asociados', value: zoneASensors.slice(0, 3).length }
         ],
         rows: normalizeRows(
           [
             ...(pVektor02 ? [pVektor02] : []),
-            ...pVektor02Actuators
+            ...zoneASensors.slice(0, 3)
           ],
           'Sector A'
         ),
+        snapshotEntries: buildSnapshotEntries([
+          ...(pVektor02 ? [{ componentType: 'PLC', item: pVektor02 }] : []),
+          ...zoneASensors.slice(0, 3).map((sensor) => ({ componentType: 'SENSOR', item: sensor }))
+        ]),
+      },
+      {
+        key: 'pvektor01',
+        title: 'PVektor01',
+        position: { top: '28%', left: '53.9%', width: '18%', height: '16%' },
+        led: { top: '26.8%', left: '67.5%' },
+        status: getWorstStatus(
+          [
+            ...(pVektor01 ? [getSnapshotStatus('PLC', pVektor01.id)] : []),
+            ...pVektor01Actuators.map((actuator) => getSnapshotStatus('ACTUATOR', actuator.id)).filter(Boolean)
+          ],
+          inferStatusFromItems([
+            ...(pVektor01 ? [pVektor01] : []),
+            ...pVektor01Actuators
+          ])
+        ),
+        description: 'Placa PVektor01 del Sector A. Controla alarmas y salidas digitales.',
+        metrics: [
+          { label: 'PLC asociado', value: pVektor01 ? 1 : 0 },
+          { label: 'Actuadores asociados', value: pVektor01Actuators.length }
+        ],
+        rows: normalizeRows(
+          [
+            ...(pVektor01 ? [pVektor01] : []),
+            ...pVektor01Actuators
+          ],
+          'Sector A'
+        ),
+        snapshotEntries: buildSnapshotEntries([
+          ...(pVektor01 ? [{ componentType: 'PLC', item: pVektor01 }] : []),
+          ...pVektor01Actuators.map((actuator) => ({ componentType: 'ACTUATOR', item: actuator }))
+        ]),
       },
       {
         key: 'alarma-roja-1',
         title: 'Alarma Roja 1',
-        position: { top: '30.6%', left: '25%', width: '4.5%', height: '8%' },
-        led: { top: '28.9%', left: '24.9%' },
-        status: inferStatusFromItems(pVektor02Actuators.slice(0, 1)),
-        description: 'Salida de alarma/actuacion 1 comandada desde PVektor02.',
-        metrics: [{ label: 'Actuadores asociados', value: pVektor02Actuators.slice(0, 1).length }],
-        rows: normalizeRows(pVektor02Actuators.slice(0, 1), 'PVektor02'),
+        position: { top: '30.85%', left: '25.66%', width: '4.5%', height: '8%' },
+        led: { top: '29.15%', left: '25.56%' },
+        status: getActuatorSignalStatus(alarmaRoja1[0]),
+        description: 'Salida de alarma/actuacion 1 comandada desde PVektor01.',
+        metrics: [{ label: 'Actuadores asociados', value: alarmaRoja1.length }],
+        rows: normalizeRows(alarmaRoja1, 'PVektor01'),
+        snapshotEntries: buildSnapshotEntries(alarmaRoja1.map((actuator) => ({ componentType: 'ACTUATOR', item: actuator }))),
       },
       {
         key: 'alarma-roja-2',
         title: 'Alarma Roja 2',
-        position: { top: '30.6%', left: '36.7%', width: '4.5%', height: '8%' },
-        led: { top: '28.9%', left: '36.6%' },
-        status: inferStatusFromItems(pVektor02Actuators.slice(1, 2)),
-        description: 'Salida de alarma/actuacion 2 comandada desde PVektor02.',
-        metrics: [{ label: 'Actuadores asociados', value: pVektor02Actuators.slice(1, 2).length }],
-        rows: normalizeRows(pVektor02Actuators.slice(1, 2), 'PVektor02'),
+        position: { top: '30.85%', left: '35.71%', width: '4.5%', height: '8%' },
+        led: { top: '29.15%', left: '35.61%' },
+        status: getActuatorSignalStatus(alarmaRoja2[0]),
+        description: 'Salida de alarma/actuacion 2 comandada desde PVektor01.',
+        metrics: [{ label: 'Actuadores asociados', value: alarmaRoja2.length }],
+        rows: normalizeRows(alarmaRoja2, 'PVektor01'),
+        snapshotEntries: buildSnapshotEntries(alarmaRoja2.map((actuator) => ({ componentType: 'ACTUATOR', item: actuator }))),
       },
       {
         key: 'alarma-roja-3',
         title: 'Alarma Roja 3',
-        position: { top: '30.6%', left: '45.3%', width: '4.5%', height: '8%' },
-        led: { top: '28.9%', left: '45.2%' },
-        status: inferStatusFromItems(pVektor02Actuators.slice(2, 3)),
-        description: 'Salida de alarma/actuacion 3 comandada desde PVektor02.',
-        metrics: [{ label: 'Actuadores asociados', value: pVektor02Actuators.slice(2, 3).length }],
-        rows: normalizeRows(pVektor02Actuators.slice(2, 3), 'PVektor02'),
+        position: { top: '30.85%', left: '45.3%', width: '4.5%', height: '8%' },
+        led: { top: '29.15%', left: '45.2%' },
+        status: getActuatorSignalStatus(alarmaRoja3[0]),
+        description: 'Salida de alarma/actuacion 3 comandada desde PVektor01.',
+        metrics: [{ label: 'Actuadores asociados', value: alarmaRoja3.length }],
+        rows: normalizeRows(alarmaRoja3, 'PVektor01'),
+        snapshotEntries: buildSnapshotEntries(alarmaRoja3.map((actuator) => ({ componentType: 'ACTUATOR', item: actuator }))),
       },
       {
         key: 'switch-a',
         title: 'Switch A',
         position: { top: '28%', left: '80.5%', width: '11%', height: '9%' },
         led: { top: '26.2%', left: '89.5%' },
-        status: inferStatusFromItems([pVektor01, pVektor02].filter(Boolean)),
+        status: getWorstStatus(
+          [pVektor01, pVektor02]
+            .filter(Boolean)
+            .map((plc) => getSnapshotStatus('PLC', plc.id))
+            .filter(Boolean),
+          inferStatusFromItems([pVektor01, pVektor02].filter(Boolean))
+        ),
         description: 'Switch industrial del Sector A. Solo conecta las placas PVektor01 y PVektor02.',
         metrics: [{ label: 'Equipos conectados', value: [pVektor01, pVektor02].filter(Boolean).length }],
         rows: normalizeRows([pVektor01, pVektor02].filter(Boolean), 'Switch A'),
+        snapshotEntries: buildSnapshotEntries(
+          [pVektor01, pVektor02].filter(Boolean).map((plc) => ({ componentType: 'PLC', item: plc }))
+        ),
       },
       {
         key: 'pc-sistema',
@@ -230,6 +455,7 @@ const SaludSistema = () => {
           { primary: 'Servidor de Comunicaciones', secondary: 'Backend / Socket / API', state: 'Disponible' },
           { primary: 'Base de Datos', secondary: 'PostgreSQL / Knex', state: 'Disponible' },
         ],
+        snapshotEntries: [],
       },
       {
         key: 'switch-sistemas',
@@ -240,6 +466,7 @@ const SaludSistema = () => {
         description: 'Switch del sistema informatico para concentracion de red del proyecto.',
         metrics: [{ label: 'Enlaces monitoreados', value: 'Pendiente housekeeping' }],
         rows: normalizeRows(plcs, 'Switch Sistemas'),
+        snapshotEntries: buildSnapshotEntries(plcs.map((plc) => ({ componentType: 'PLC', item: plc }))),
       },
       {
         key: 'switch-intermedio',
@@ -250,49 +477,66 @@ const SaludSistema = () => {
         description: 'Nodo de distribucion entre el sistema informatico y los sectores del piloto.',
         metrics: [{ label: 'PLCs comunicados', value: plcs.length }],
         rows: normalizeRows(plcs, 'Switch Intermedio'),
+        snapshotEntries: buildSnapshotEntries(plcs.map((plc) => ({ componentType: 'PLC', item: plc }))),
       },
       {
         key: 'switch-b',
         title: 'Switch B',
         position: { top: '57.5%', left: '72.1%', width: '11%', height: '8%' },
         led: { top: '55.7%', left: '81.1%' },
-        status: inferStatusFromItems(plc01S01 ? [plc01S01] : []),
+        status: inferStatusFromSnapshots('PLC', plc01S01 ? [plc01S01] : [], inferStatusFromItems(plc01S01 ? [plc01S01] : [])),
         description: 'Switch industrial del Sector B. El PLC01-S01 se conecta fisicamente a este switch.',
         metrics: [{ label: 'Equipos conectados', value: plc01S01 ? 1 : 0 }],
         rows: normalizeRows(plc01S01 ? [plc01S01] : [], 'Switch B'),
+        snapshotEntries: buildSnapshotEntries(plc01S01 ? [{ componentType: 'PLC', item: plc01S01 }] : []),
       },
       {
         key: 'sensor-modbus-caudal',
-        title: 'Sensor Modbus Caudal',
+        title: 'Sensor Caudal/Temperatura',
         position: { top: '64%', left: '53%', width: '7.5%', height: '8%' },
         led: { top: '62.3%', left: '51.9%' },
-        status: inferStatusFromItems(sensorModbusCaudal ? [sensorModbusCaudal] : []),
-        description: 'Sensor de caudal Modbus del Sector B.',
-        metrics: [{ label: 'Sensores asociados', value: sensorModbusCaudal ? 1 : 0 }],
-        rows: normalizeRows(sensorModbusCaudal ? [sensorModbusCaudal] : [], 'Sector B'),
+        status: inferStatusFromSnapshots(
+          'SENSOR',
+          sensorModbusCaudalSensors,
+          inferStatusFromItems(sensorModbusCaudalSensors)
+        ),
+        description: 'Instrumento Modbus del Sector B que concentra mediciones de caudal y temperatura.',
+        metrics: [{ label: 'Sensores asociados', value: sensorModbusCaudalSensors.length }],
+        rows: normalizeRows(sensorModbusCaudalSensors, 'Sector B'),
+        snapshotEntries: buildSnapshotEntries(
+          sensorModbusCaudalSensors.map((sensor) => ({ componentType: 'SENSOR', item: sensor }))
+        ),
       },
       {
         key: 'instrumentacion-sector-b',
         title: 'Instrumentacion de Campo Sector B',
         position: { top: '75.3%', left: '51.7%', width: '12%', height: '19%' },
         led: { top: '73.8%', left: '50%' },
-        status: inferStatusFromItems(zoneBSensors),
-        description: 'Sensores de caudal y temperatura del Sector B.',
-        metrics: [{ label: 'Sensores asociados', value: zoneBSensors.length }],
-        rows: normalizeRows(zoneBSensors, 'Sector B'),
+        status: inferStatusFromSnapshots(
+          'SENSOR',
+          instrumentacionSectorBSensors,
+          inferStatusFromItems(instrumentacionSectorBSensors)
+        ),
+        description: 'Instrumento local del Sector B asociado a los sensores CAUD02 y GAS001.',
+        metrics: [{ label: 'Sensores asociados', value: instrumentacionSectorBSensors.length }],
+        rows: normalizeRows(instrumentacionSectorBSensors, 'Sector B'),
+        snapshotEntries: buildSnapshotEntries(
+          instrumentacionSectorBSensors.map((sensor) => ({ componentType: 'SENSOR', item: sensor }))
+        ),
       },
       {
         key: 'plc-sector-b',
         title: plc01S01?.nombre || 'PLC01-S01',
         position: { top: '73%', left: '74%', width: '16%', height: '12%' },
         led: { top: '71.2%', left: '90.2%' },
-        status: inferStatusFromItems(plc01S01 ? [plc01S01] : []),
+        status: inferStatusFromSnapshots('PLC', plc01S01 ? [plc01S01] : [], inferStatusFromItems(plc01S01 ? [plc01S01] : [])),
         description: 'PLC MODBUS de caudal y volumen de gas del Sector B.',
         metrics: [{ label: 'PLCs asociados', value: plc01S01 ? 1 : 0 }],
         rows: normalizeRows(plc01S01 ? [plc01S01] : [], 'Sector B'),
+        snapshotEntries: buildSnapshotEntries(plc01S01 ? [{ componentType: 'PLC', item: plc01S01 }] : []),
       },
     ];
-  }, [actuators, plcs, sensors]);
+  }, [actuators, healthSnapshotMap, latestActuatorActions, plcs, sensors]);
 
   if (loading) {
     return (
@@ -314,6 +558,11 @@ const SaludSistema = () => {
         <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
           Vista operacional del piloto. Cada LED representa un componente individual y cada area clickeable abre el detalle de ese componente.
         </Typography>
+        {healthSnapshotTime && (
+          <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+            Ultimo snapshot de housekeeping: {new Date(healthSnapshotTime).toLocaleString()}
+          </Typography>
+        )}
 
         <Box sx={{ display: 'flex', justifyContent: 'center' }}>
           <Box
@@ -421,6 +670,61 @@ const SaludSistema = () => {
                 ) : (
                   <Typography color="textSecondary">Sin elementos configurados para este componente.</Typography>
                 )}
+              </Box>
+
+              <Box sx={{ mt: 3 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 1 }}>
+                  Ultimo Snapshot
+                </Typography>
+                <Box sx={{ display: 'grid', gap: 1.5 }}>
+                  {selectedComponent.snapshotEntries?.length > 0 ? (
+                    selectedComponent.snapshotEntries.map((entry, index) => (
+                      <Paper key={`${entry.label}-${index}`} variant="outlined" sx={{ p: 1.5, backgroundColor: '#f8fafc' }}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 1 }}>
+                          {entry.label}
+                        </Typography>
+                        <Typography variant="caption" sx={{ display: 'block' }}>
+                          status: {formatSnapshotValue(entry.snapshot.status)}
+                        </Typography>
+                        <Typography variant="caption" sx={{ display: 'block' }}>
+                          is_available: {formatSnapshotValue(entry.snapshot.is_available)}
+                        </Typography>
+                        <Typography variant="caption" sx={{ display: 'block' }}>
+                          communication_state: {formatSnapshotValue(entry.snapshot.communication_state)}
+                        </Typography>
+                        <Typography variant="caption" sx={{ display: 'block' }}>
+                          latency_ms: {formatSnapshotValue(entry.snapshot.latency_ms)}
+                        </Typography>
+                        <Typography variant="caption" sx={{ display: 'block' }}>
+                          last_response_at: {formatSnapshotValue(entry.snapshot.last_response_at)}
+                        </Typography>
+                        <Typography variant="caption" sx={{ display: 'block' }}>
+                          timeout_count: {formatSnapshotValue(entry.snapshot.timeout_count)}
+                        </Typography>
+                        <Typography variant="caption" sx={{ display: 'block', mt: 0.75, fontWeight: 'bold' }}>
+                          metadata:
+                        </Typography>
+                        <Box
+                          component="pre"
+                          sx={{
+                            mt: 0.5,
+                            mb: 0,
+                            p: 1,
+                            borderRadius: 1,
+                            backgroundColor: '#e2e8f0',
+                            fontSize: '0.72rem',
+                            whiteSpace: 'pre-wrap',
+                            wordBreak: 'break-word'
+                          }}
+                        >
+                          {formatSnapshotValue(entry.snapshot.metadata)}
+                        </Box>
+                      </Paper>
+                    ))
+                  ) : (
+                    <Typography color="textSecondary">Sin snapshot disponible para este componente.</Typography>
+                  )}
+                </Box>
               </Box>
             </Box>
           )}

@@ -14,6 +14,10 @@ class PLCManager {
     this.io = io;
   }
 
+  isConnected(plcId) {
+    return this.connections.has(plcId);
+  }
+
   emitSensorUpdate(sensor, value) {
     if (!this.io) {
       return;

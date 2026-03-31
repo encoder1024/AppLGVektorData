@@ -11,6 +11,7 @@ import ConfigSensores from './pages/ConfigSensores';
 import ConfigCalibration from './pages/ConfigCalibration';
 import ConfigActuadores from './pages/ConfigActuadores';
 import Historicos from './pages/Historicos'; // Importar el nuevo componente Historicos
+import SaludSistema from './pages/SaludSistema';
 
 // Tema personalizado industrial
 const theme = createTheme({
@@ -44,6 +45,14 @@ const PrivateRoute = ({ children }) => {
   return user ? children : <Navigate to="/login" />;
 };
 
+const RoleRoute = ({ children, roles }) => {
+  const { user, loading } = useAuth();
+
+  if (loading) return null;
+  if (!user) return <Navigate to="/login" />;
+  return roles.includes(user.role) ? children : <Navigate to="/" />;
+};
+
 function App() {
   return (
     <ThemeProvider theme={theme}>
@@ -56,6 +65,7 @@ function App() {
 
             <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
               <Route index element={<Dashboard />} />
+              <Route path="salud-sistema" element={<RoleRoute roles={['DEVELOPER', 'ADMIN']}><SaludSistema /></RoleRoute>} />
               <Route path="historicos" element={<Historicos />} /> {/* Usar el componente Historicos */}
               <Route path="config/plcs" element={<ConfigPLCs />} />
               <Route path="config/calibracion" element={<ConfigCalibration />} />
@@ -74,4 +84,3 @@ function App() {
 }
 
 export default App;
-

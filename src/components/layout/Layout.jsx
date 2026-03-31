@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Box,
   Drawer,
@@ -26,6 +26,7 @@ import {
   SettingsInputComponent as PLCSIcon,
   Functions as FunctionsIcon,
   ToggleOn as ToggleIcon,
+  HealthAndSafety as HealthIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -36,6 +37,7 @@ const Layout = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [open, setOpen] = useState(!isMobile);
+  const mainContentRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
@@ -50,13 +52,16 @@ const Layout = () => {
 
   const handleNavigation = (path) => {
     navigate(path);
-    if (isMobile) {
-      setOpen(false);
-    }
+    setOpen(false);
   };
+
+  useEffect(() => {
+    mainContentRef.current?.focus();
+  }, [location.pathname]);
 
   const menuItems = [
     { text: 'Panel Control', icon: <DashboardIcon />, path: '/', roles: ['ADMIN', 'LIDER', 'DEVELOPER', 'TECHNICIAN'] },
+    { text: 'Salud del Sistema', icon: <HealthIcon />, path: '/salud-sistema', roles: ['DEVELOPER', 'ADMIN'] },
     { text: 'Historicos', icon: <HistoryIcon />, path: '/historicos', roles: ['ADMIN', 'LIDER', 'DEVELOPER', 'TECHNICIAN'] },
     { text: 'PLC Configuracion', icon: <PLCSIcon />, path: '/config/plcs', roles: ['ADMIN', 'DEVELOPER'] },
     { text: 'Perfiles Calibracion', icon: <FunctionsIcon />, path: '/config/calibracion', roles: ['ADMIN', 'DEVELOPER'] },
@@ -150,6 +155,8 @@ const Layout = () => {
 
       <Box
         component="main"
+        ref={mainContentRef}
+        tabIndex={-1}
         sx={{
           flexGrow: 1,
           px: { xs: 2, sm: 2 },

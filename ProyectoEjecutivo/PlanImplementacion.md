@@ -49,6 +49,7 @@ Este documento detalla la estrategia de desarrollo para la aplicación PWA de mo
 | **4.2** | Gráficos de Tendencias | Visualización de históricos con Recharts usando `time_bucket` de SQL para optimizar consultas. |
 | **4.3** | Control de Actuadores | Interfaz para las 3 acciones: 2 ON/OFF y 1 ajuste analógico con confirmación de seguridad. |
 | **4.4** | Motor de Eventos/Alertas | Detección de excedentes de límites y registro de eventos críticos en la base de datos. |
+| **4.5** | Motor de Salud del sistema | Detección de perdidas de comunicación, energía y registro de eventos críticos del sistema. |
 
 ## Etapa 5: Optimización PWA y Entrega
 **Objetivo:** Finalización para entorno productivo y cumplimiento normativo.

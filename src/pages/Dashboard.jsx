@@ -30,19 +30,20 @@ const SWITCH_UI_TYPES = new Set(['SWITCH_ON_OFF', 'SELECTOR_MODO']);
 const PULSE_UI_TYPES = new Set(['PULSADOR_MOMENTANEO']);
 const ACTUATOR_ACTIVE_WINDOW_MS = 1500;
 const DASHBOARD_CARD_WIDTH = 280;
+const DASHBOARD_CARD_MIN_HEIGHT = 255;
 const DASHBOARD_ZONES = [
   {
     key: 'ZONA_A',
     label: 'Zona A',
-    containerBg: '#eef6ff',
-    borderColor: '#93c5fd',
+    containerBg: '#f3fdf4',
+    borderColor: '#86efac',
     columns: { xs: 1, sm: 2, md: 3 }
   },
   {
     key: 'ZONA_B',
     label: 'Zona B',
-    containerBg: '#f3fdf4',
-    borderColor: '#86efac',
+    containerBg: '#f6f0ff',
+    borderColor: '#d8b4fe',
     columns: { xs: 1, sm: 2, md: 2 }
   }
 ];
@@ -500,7 +501,7 @@ const Dashboard = () => {
             xs: '1fr',
             lg: 'minmax(0, 3fr) minmax(0, 2fr)'
           },
-          alignItems: 'start'
+          alignItems: { xs: 'start', lg: 'stretch' }
         }}
       >
         {DASHBOARD_ZONES.map((zone) => (
@@ -511,7 +512,8 @@ const Dashboard = () => {
               p: 2.5,
               borderRadius: 3,
               backgroundColor: zone.containerBg,
-              border: `1px solid ${zone.borderColor}`
+              border: `1px solid ${zone.borderColor}`,
+              height: '100%'
             }}
           >
             <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#1e293b', mb: 2 }}>
@@ -552,6 +554,7 @@ const Dashboard = () => {
                     width: '100%',
                     maxWidth: `${DASHBOARD_CARD_WIDTH}px`,
                     height: '100%',
+                    minHeight: DASHBOARD_CARD_MIN_HEIGHT,
                     display: 'flex',
                     flexDirection: 'column',
                     overflow: 'hidden',
@@ -656,6 +659,7 @@ const Dashboard = () => {
                   width: '100%',
                   maxWidth: `${DASHBOARD_CARD_WIDTH}px`,
                   height: '100%',
+                  minHeight: DASHBOARD_CARD_MIN_HEIGHT,
                   display: 'flex',
                   flexDirection: 'column',
                   overflow: 'hidden',

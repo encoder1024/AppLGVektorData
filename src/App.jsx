@@ -12,6 +12,8 @@ import ConfigCalibration from './pages/ConfigCalibration';
 import ConfigActuadores from './pages/ConfigActuadores';
 import Historicos from './pages/Historicos'; // Importar el nuevo componente Historicos
 import SaludSistema from './pages/SaludSistema';
+import Usuarios from './pages/Usuarios';
+import AppConfig from './pages/AppConfig';
 
 // Tema personalizado industrial
 const theme = createTheme({
@@ -71,8 +73,8 @@ function App() {
               <Route path="config/calibracion" element={<ConfigCalibration />} />
               <Route path="config/sensores" element={<ConfigSensores />} />
               <Route path="config/actuadores" element={<ConfigActuadores />} />
-              <Route path="admin/usuarios" element={<Typography variant="h4">Gestión Usuarios (Próximamente)</Typography>} />
-              <Route path="settings" element={<Typography variant="h4">Ajustes App (Próximamente)</Typography>} />
+              <Route path="admin/usuarios" element={<RoleRoute roles={['ADMIN']}><Usuarios /></RoleRoute>} />
+              <Route path="settings" element={<RoleRoute roles={['ADMIN']}><AppConfig /></RoleRoute>} />
             </Route>
 
             <Route path="*" element={<Navigate to="/" />} />

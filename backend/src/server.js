@@ -14,6 +14,8 @@ import auditLogsRoutes from './routes/auditLogsRoutes.js';
 import sensorEventsRoutes from './routes/sensorEventsRoutes.js';
 import actuatorActionsRoutes from './routes/actuatorActionsRoutes.js';
 import systemHealthRoutes from './routes/systemHealthRoutes.js';
+import userRoutes from './routes/userRoutes.js';
+import appConfigRoutes from './routes/appConfigRoutes.js';
 import plcManager from './services/plcManager.js';
 import systemHealthService from './services/systemHealthService.js';
 
@@ -45,6 +47,8 @@ app.use('/api/audit-logs', auditLogsRoutes);
 app.use('/api/sensor-events', sensorEventsRoutes);
 app.use('/api/actuator-actions', actuatorActionsRoutes);
 app.use('/api/system-health', systemHealthRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/config', appConfigRoutes);
 
 async function initSystem() {
   let retries = 15;

@@ -43,6 +43,14 @@ const normalizeSensorPayload = async (payload) => {
     normalized.tipo_instrumento = payload.tipo_instrumento;
   }
 
+  if (columns.has('zona') && payload.zona !== undefined) {
+    normalized.zona = payload.zona;
+  }
+
+  if (columns.has('orden_dashboard') && payload.orden_dashboard !== undefined) {
+    normalized.orden_dashboard = toNullableNumber(payload.orden_dashboard) ?? 0;
+  }
+
   return Object.fromEntries(
     Object.entries(normalized).filter(([key, value]) => columns.has(key) && value !== undefined)
   );

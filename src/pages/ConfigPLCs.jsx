@@ -15,6 +15,7 @@ import api from '../services/api';
 
 const brands = ['SIEMENS', 'SCHNEIDER', 'ALLEN_BRADLEY', 'DELTA', 'ARDUINO', 'OTHER'];
 const protocols = ['MODBUS_TCP', 'S7', 'ETHERNET_IP', 'OPC_UA', 'MQTT', 'SIMULATED'];
+const zoneOptions = ['ZONA_A', 'ZONA_B'];
 
 const ConfigPLCs = () => {
   const [plcs, setPlcs] = useState([]);
@@ -30,7 +31,10 @@ const ConfigPLCs = () => {
     ip_address: '',
     puerto: 102,
     unidad_id: 1,
-    scan_rate_ms: 1000
+    scan_rate_ms: 1000,
+    activo: true,
+    zona: 'ZONA_A',
+    orden_dashboard: 0
   });
 
   const fetchPLCs = async () => {
@@ -57,7 +61,7 @@ const ConfigPLCs = () => {
       setCurrentPlc(null);
       setFormData({
         nombre: '', marca: 'SIEMENS', protocolo: 'S7', 
-        ip_address: '', puerto: 102, unidad_id: 1, scan_rate_ms: 1000
+        ip_address: '', puerto: 102, unidad_id: 1, scan_rate_ms: 1000, activo: true, zona: 'ZONA_A', orden_dashboard: 0
       });
     }
     setOpen(true);
@@ -198,6 +202,16 @@ const ConfigPLCs = () => {
               <TextField
                 fullWidth name="scan_rate_ms" label="Scan Rate (ms)" type="number"
                 value={formData.scan_rate_ms} onChange={handleChange} required
+              />
+              <TextField
+                select fullWidth name="zona" label="Zona Dashboard"
+                value={formData.zona || 'ZONA_A'} onChange={handleChange} required
+              >
+                {zoneOptions.map((zone) => <MenuItem key={zone} value={zone}>{zone}</MenuItem>)}
+              </TextField>
+              <TextField
+                fullWidth name="orden_dashboard" label="Orden en Dashboard" type="number"
+                value={formData.orden_dashboard ?? 0} onChange={handleChange} required
               />
             </Box>
           </DialogContent>

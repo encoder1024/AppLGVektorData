@@ -30,6 +30,22 @@ const SWITCH_UI_TYPES = new Set(['SWITCH_ON_OFF', 'SELECTOR_MODO']);
 const PULSE_UI_TYPES = new Set(['PULSADOR_MOMENTANEO']);
 const ACTUATOR_ACTIVE_WINDOW_MS = 1500;
 const DASHBOARD_CARD_WIDTH = 280;
+const DASHBOARD_ZONES = [
+  {
+    key: 'ZONA_A',
+    label: 'Zona A',
+    containerBg: '#eef6ff',
+    borderColor: '#93c5fd',
+    columns: { xs: 1, sm: 2, md: 3 }
+  },
+  {
+    key: 'ZONA_B',
+    label: 'Zona B',
+    containerBg: '#f3fdf4',
+    borderColor: '#86efac',
+    columns: { xs: 1, sm: 2, md: 2 }
+  }
+];
 
 const getDashboardCardId = (type, id) => `${type}-${id}`;
 
@@ -358,16 +374,25 @@ const Dashboard = () => {
     });
   }, [dashboardCards, dashboardOrderStorageKey, isAdmin]);
 
-  const orderedCards = useMemo(() => {
-    if (!isAdmin || cardOrder.length === 0) {
-      return dashboardCards;
-    }
+  const orderedCards = useMemo(
+    () =>
+      [...dashboardCards].sort((a, b) => {
+        const zoneA = a.data.zona || 'ZONA_A';
+        const zoneB = b.data.zona || 'ZONA_A';
+        if (zoneA !== zoneB) {
+          return zoneA.localeCompare(zoneB);
+        }
 
-    const cardMap = new Map(dashboardCards.map((card) => [card.id, card]));
-    const ordered = cardOrder.map((id) => cardMap.get(id)).filter(Boolean);
-    const missing = dashboardCards.filter((card) => !cardOrder.includes(card.id));
-    return [...ordered, ...missing];
-  }, [cardOrder, dashboardCards, isAdmin]);
+        const orderA = Number(a.data.orden_dashboard ?? 0);
+        const orderB = Number(b.data.orden_dashboard ?? 0);
+        if (orderA !== orderB) {
+          return orderA - orderB;
+        }
+
+        return String(a.data.nombre || a.data.tag_name || '').localeCompare(String(b.data.nombre || b.data.tag_name || ''));
+      }),
+    [dashboardCards]
+  );
 
   const moveCard = (fromId, toId) => {
     if (!isAdmin || fromId === toId) {
@@ -473,13 +498,38 @@ const Dashboard = () => {
           gap: 3,
           gridTemplateColumns: {
             xs: '1fr',
-            sm: 'repeat(2, minmax(0, 1fr))',
-            md: 'repeat(5, minmax(0, 1fr))'
+            lg: 'minmax(0, 3fr) minmax(0, 2fr)'
           },
-          alignItems: 'stretch'
+          alignItems: 'start'
         }}
       >
-        {orderedCards.map((card) => {
+        {DASHBOARD_ZONES.map((zone) => (
+          <Paper
+            key={zone.key}
+            elevation={0}
+            sx={{
+              p: 2.5,
+              borderRadius: 3,
+              backgroundColor: zone.containerBg,
+              border: `1px solid ${zone.borderColor}`
+            }}
+          >
+            <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#1e293b', mb: 2 }}>
+              {zone.label}
+            </Typography>
+            <Box
+              sx={{
+                display: 'grid',
+                gap: 3,
+                gridTemplateColumns: {
+                  xs: `repeat(${zone.columns.xs}, minmax(0, 1fr))`,
+                  sm: `repeat(${zone.columns.sm}, minmax(0, 1fr))`,
+                  md: `repeat(${zone.columns.md}, minmax(0, 1fr))`
+                },
+                alignItems: 'stretch'
+              }}
+            >
+        {orderedCards.filter((card) => (card.data.zona || 'ZONA_A') === zone.key).map((card) => {
           if (card.entityType === 'sensor') {
             const sensor = card.data;
             const value = readings[sensor.id] ?? 0;
@@ -701,6 +751,9 @@ const Dashboard = () => {
             </Box>
           );
         })}
+            </Box>
+          </Paper>
+        ))}
       </Box>
     </Box>
   );

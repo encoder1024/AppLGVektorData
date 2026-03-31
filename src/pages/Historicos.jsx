@@ -30,6 +30,25 @@ import { Download as DownloadIcon } from '@mui/icons-material';
 import { saveAs } from 'file-saver';
 import api from '../services/api';
 
+const getDefaultLastHourRange = () => {
+  const end = new Date();
+  const start = new Date(end.getTime() - 60 * 60 * 1000);
+
+  const toDateTimeLocalInputValue = (date) => {
+    const year = date.getFullYear();
+    const month = `${date.getMonth() + 1}`.padStart(2, '0');
+    const day = `${date.getDate()}`.padStart(2, '0');
+    const hours = `${date.getHours()}`.padStart(2, '0');
+    const minutes = `${date.getMinutes()}`.padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  };
+
+  return {
+    start: toDateTimeLocalInputValue(start),
+    end: toDateTimeLocalInputValue(end),
+  };
+};
+
 const Historicos = () => {
   const [sensors, setSensors] = useState([]);
   const [sensorMeasurements, setSensorMeasurements] = useState([]);
@@ -44,7 +63,7 @@ const Historicos = () => {
   const [error, setError] = useState('');
   const [initialized, setInitialized] = useState(false);
   const [selectedSensorId, setSelectedSensorId] = useState('');
-  const [dateRange, setDateRange] = useState({ start: '', end: '' });
+  const [dateRange, setDateRange] = useState(() => getDefaultLastHourRange());
   const [measurementBrushRange, setMeasurementBrushRange] = useState({ startIndex: 0, endIndex: 0 });
 
   const formatChartTime = (tickItem) => {
@@ -117,6 +136,49 @@ const Historicos = () => {
         alertHighEvent: alertHigh !== null && Number(item.value) >= alertHigh ? 1 : 0,
       })),
     };
+  };
+
+  const parseActuatorActionState = (action) => {
+    const details =
+      typeof action?.details === 'string'
+        ? (() => {
+            try {
+              return JSON.parse(action.details);
+            } catch (error) {
+              return {};
+            }
+          })()
+        : action?.details || {};
+
+    const candidateValue = [
+      action?.state,
+      action?.value,
+      details.state,
+      details.value,
+      details.newValue,
+      details.output,
+      details.enabled
+    ].find((value) => value !== undefined && value !== null);
+
+    if (typeof candidateValue === 'boolean') {
+      return candidateValue ? 1 : 0;
+    }
+
+    if (typeof candidateValue === 'number') {
+      return candidateValue !== 0 ? 1 : 0;
+    }
+
+    if (typeof candidateValue === 'string') {
+      const normalized = candidateValue.trim().toUpperCase();
+      if (['1', 'TRUE', 'ON', 'OPEN', 'START', 'ENABLE', 'ENABLED', 'HIGH'].includes(normalized)) {
+        return 1;
+      }
+      if (['0', 'FALSE', 'OFF', 'CLOSE', 'STOP', 'DISABLE', 'LOW'].includes(normalized)) {
+        return 0;
+      }
+    }
+
+    return action?.action_type === 'PULSE' ? 1 : 0;
   };
 
   const fetchSensorMeasurements = async (sensorId, startDate, endDate) => {
@@ -234,7 +296,10 @@ const Historicos = () => {
 
       const formattedActions = response.data.map((item) => ({
         ...item,
+        rawTimestamp: item.timestamp || null,
         timestamp: item.timestamp ? new Date(item.timestamp).toLocaleString() : 'N/A',
+        localTime: item.timestamp ? formatChartTime(item.timestamp) : 'N/A',
+        localDateTime: item.timestamp ? formatLocalDateTime(item.timestamp) : 'N/A',
       }));
 
       setActuatorActions(formattedActions);
@@ -509,6 +574,62 @@ const Historicos = () => {
 
     return { min, max, avg };
   }, [visibleMeasurementRange]);
+
+  const actuatorWaveChartData = useMemo(() => {
+    if (actuatorActions.length === 0) {
+      return { data: [], actuatorNames: [] };
+    }
+
+    const sortedActions = [...actuatorActions]
+      .filter((action) => action.rawTimestamp && action.actuator_name)
+      .sort((a, b) => new Date(a.rawTimestamp) - new Date(b.rawTimestamp));
+
+    const actuatorNames = [...new Set(sortedActions.map((action) => action.actuator_name).filter(Boolean))];
+
+    if (sortedActions.length === 0 || actuatorNames.length === 0) {
+      return { data: [], actuatorNames: [] };
+    }
+
+    const initialStates = Object.fromEntries(actuatorNames.map((name) => [name, 0]));
+    const points = [];
+    const firstTime = sortedActions[0].rawTimestamp;
+
+    points.push({
+        time: firstTime,
+      localTime: formatChartTime(firstTime),
+      localDateTime: formatLocalDateTime(firstTime),
+      ...initialStates,
+    });
+
+    const currentStates = { ...initialStates };
+
+    sortedActions.forEach((action) => {
+      const actuatorName = action.actuator_name;
+      currentStates[actuatorName] = parseActuatorActionState(action);
+      points.push({
+        time: action.rawTimestamp,
+        localTime: action.localTime || formatChartTime(action.rawTimestamp),
+        localDateTime: action.localDateTime || formatLocalDateTime(action.rawTimestamp),
+        ...currentStates,
+      });
+    });
+
+    return { data: points, actuatorNames };
+  }, [actuatorActions]);
+
+  const actuatorWaveSeries = useMemo(
+    () =>
+      actuatorWaveChartData.actuatorNames.map((actuatorName) => ({
+        actuatorName,
+        data: actuatorWaveChartData.data.map((item) => ({
+          time: item.time,
+          localTime: item.localTime,
+          localDateTime: item.localDateTime,
+          state: item[actuatorName] ?? 0,
+        })),
+      })),
+    [actuatorWaveChartData]
+  );
 
   const getOrderedThresholdDefinitions = (sensorLike) => {
     const thresholds = [
@@ -929,28 +1050,44 @@ const Historicos = () => {
             <DownloadIcon /> Descargar CSV
           </IconButton>
         </Box>
-        <Box sx={{ height: 300, overflowY: 'auto' }}>
-          {actuatorActions.length > 0 ? (
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  <th style={{ border: '1px solid #e2e8f0', padding: '8px', textAlign: 'left', backgroundColor: '#f8fafc' }}>Timestamp</th>
-                  <th style={{ border: '1px solid #e2e8f0', padding: '8px', textAlign: 'left', backgroundColor: '#f8fafc' }}>Actuador</th>
-                  <th style={{ border: '1px solid #e2e8f0', padding: '8px', textAlign: 'left', backgroundColor: '#f8fafc' }}>Accion</th>
-                  <th style={{ border: '1px solid #e2e8f0', padding: '8px', textAlign: 'left', backgroundColor: '#f8fafc' }}>Usuario</th>
-                </tr>
-              </thead>
-              <tbody>
-                {actuatorActions.map((action, index) => (
-                  <tr key={index}>
-                    <td style={{ border: '1px solid #e2e8f0', padding: '8px' }}>{action.timestamp}</td>
-                    <td style={{ border: '1px solid #e2e8f0', padding: '8px' }}>{action.actuator_name || 'N/A'}</td>
-                    <td style={{ border: '1px solid #e2e8f0', padding: '8px' }}>{action.action_type || 'N/A'}</td>
-                    <td style={{ border: '1px solid #e2e8f0', padding: '8px' }}>{action.user_name || action.user_id || 'N/A'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <Box sx={{ maxHeight: 520, overflowY: 'auto', pr: 1 }}>
+          {actuatorWaveSeries.length > 0 ? (
+            actuatorWaveSeries.map((seriesItem, index) => (
+              <Paper key={seriesItem.actuatorName} variant="outlined" sx={{ p: 2, mb: 2, backgroundColor: '#f8fafc' }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 'bold', color: '#0f172a', mb: 1 }}>
+                  {seriesItem.actuatorName}
+                </Typography>
+                <Box sx={{ height: 150 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={seriesItem.data} margin={{ top: 5, right: 30, left: 20, bottom: 55 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                      <XAxis
+                        dataKey="localTime"
+                        stroke="#64748b"
+                        angle={-45}
+                        textAnchor="end"
+                        interval="preserveStartEnd"
+                        height={70}
+                      />
+                      <YAxis stroke="#64748b" domain={[0, 1]} ticks={[0, 1]} allowDecimals={false} />
+                      <Tooltip
+                        formatter={(value) => (Number(value) === 1 ? 'ON' : 'OFF')}
+                        labelFormatter={(label, payload) => payload?.[0]?.payload?.localDateTime || label}
+                      />
+                      <Line
+                        type="stepAfter"
+                        dataKey="state"
+                        stroke={['#2563eb', '#dc2626', '#f59e0b', '#10b981', '#7c3aed', '#0891b2'][index % 6]}
+                        dot={false}
+                        strokeWidth={2}
+                        name={seriesItem.actuatorName}
+                        connectNulls={false}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </Box>
+              </Paper>
+            ))
           ) : (
             <Typography color="textSecondary">
               No hay acciones de actuadores registradas para el periodo seleccionado.

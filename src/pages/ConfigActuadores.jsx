@@ -19,12 +19,15 @@ const uiTypes = [
 ];
 
 const dataTypes = ['BOOLEAN', 'INT16', 'UINT16', 'INT32', 'UINT32', 'FLOAT32'];
+const zoneOptions = ['ZONA_A', 'ZONA_B'];
 
 const defaultFormData = (plcId = '') => ({
   plc_id: plcId,
   nombre: '',
   descripcion: '',
   activo: true,
+  zona: 'ZONA_A',
+  orden_dashboard: 0,
   tipo_ui: 'SWITCH_ON_OFF',
   tipo_signal: 'DIGITAL_OUTPUT',
   tipo_dato_plc: 'BOOLEAN',
@@ -200,6 +203,14 @@ const ConfigActuadores = () => {
                   <MenuItem value="true">Activo</MenuItem>
                   <MenuItem value="false">Inactivo</MenuItem>
                 </TextField>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField select fullWidth name="zona" label="Zona Dashboard" value={formData.zona || 'ZONA_A'} onChange={handleChange} required>
+                  {zoneOptions.map((zone) => <MenuItem key={zone} value={zone}>{zone}</MenuItem>)}
+                </TextField>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField fullWidth name="orden_dashboard" label="Orden en Dashboard" type="number" value={formData.orden_dashboard ?? 0} onChange={handleChange} required />
               </Grid>
               <Grid item xs={12}>
                 <TextField

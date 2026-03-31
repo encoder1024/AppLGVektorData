@@ -1,5 +1,5 @@
-import db from '../config/db.js'; // Importar la conexión de la base de datos como módulo ES
-import { logAudit } from '../utils/auditLogger.js'; // Importar el logger de auditoría
+import db from '../config/db.js';
+import { logAudit } from '../utils/auditLogger.js';
 
 export const getAllActuatorActions = async (req, res) => {
   try {
@@ -28,23 +28,37 @@ export const getAllActuatorActions = async (req, res) => {
     }
 
     const actions = await query.orderBy('timestamp', 'desc');
+    const userId = req.user ? req.user.id : null;
 
-    // Log the successful retrieval of actuator actions
-    const userId = req.user ? req.user.id : null; // Placeholder for actual user ID
-    logAudit(userId, 'GET_ACTUATOR_ACTIONS', 'Se obtuvieron acciones de actuadores', {
+    await logAudit(
+      userId,
+      'GET_ACTUATOR_ACTIONS',
+      null,
+      'Se obtuvieron acciones de actuadores',
+      null,
+      {
         queryParameters: req.query,
         count: actions.length
-    });
+      }
+    );
 
     res.status(200).json(actions);
   } catch (err) {
-    console.error("Error fetching actuator actions:", err);
-    // Log the error
-    const userId = req.user ? req.user.id : null; // Placeholder for actual user ID
-    logAudit(userId, 'ERROR_GET_ACTUATOR_ACTIONS', 'Fallo al obtener acciones de actuadores', {
+    console.error('Error fetching actuator actions:', err);
+    const userId = req.user ? req.user.id : null;
+
+    await logAudit(
+      userId,
+      'ERROR_GET_ACTUATOR_ACTIONS',
+      null,
+      'Fallo al obtener acciones de actuadores',
+      null,
+      {
         error: err.message,
         queryParameters: req.query
-    });
+      }
+    );
+
     res.status(500).json({ error: 'Error interno del servidor al obtener acciones de actuadores.' });
   }
 };

@@ -2,10 +2,7 @@ import Modbus from 'jsmodbus';
 import net from 'net';
 
 const netServer = new net.Server();
-
-// 500 registros holding de 16 bits
 const holdingRegisters = Buffer.alloc(1000);
-// 64 coils binarias para actuadores digitales
 const coils = Buffer.alloc(64);
 
 new Modbus.server.TCP(netServer, {

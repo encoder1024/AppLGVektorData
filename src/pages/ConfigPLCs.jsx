@@ -118,11 +118,11 @@ const ConfigPLCs = () => {
         <Table>
           <TableHead sx={{ backgroundColor: '#f1f5f9' }}>
             <TableRow>
+              <TableCell>Estado</TableCell>
               <TableCell>Nombre</TableCell>
               <TableCell>Marca / Protocolo</TableCell>
               <TableCell>IP / Puerto</TableCell>
               <TableCell>Scan Rate</TableCell>
-              <TableCell>Estado</TableCell>
               <TableCell align="right">Acciones</TableCell>
             </TableRow>
           </TableHead>
@@ -133,7 +133,15 @@ const ConfigPLCs = () => {
               <TableRow><TableCell colSpan={6} align="center">No hay PLCs configurados</TableCell></TableRow>
             ) : (
               plcs.map((plc) => (
-                <TableRow key={plc.id}>
+                <TableRow key={plc.id} sx={{ opacity: plc.activo ? 1 : 0.5 }}>
+                  <TableCell>
+                    <Chip
+                      label={plc.activo ? 'ACTIVO' : 'OFF'}
+                      color={plc.activo ? 'success' : 'default'}
+                      size="small"
+                      variant={plc.activo ? 'filled' : 'outlined'}
+                    />
+                  </TableCell>
                   <TableCell sx={{ fontWeight: 'medium' }}>{plc.nombre}</TableCell>
                   <TableCell>
                     <Chip label={plc.marca} size="small" sx={{ mr: 0.5 }} />
@@ -141,13 +149,6 @@ const ConfigPLCs = () => {
                   </TableCell>
                   <TableCell>{plc.ip_address}:{plc.puerto}</TableCell>
                   <TableCell>{plc.scan_rate_ms}ms</TableCell>
-                  <TableCell>
-                    <Chip 
-                      label={plc.activo ? 'Activo' : 'Inactivo'} 
-                      color={plc.activo ? 'success' : 'default'} 
-                      size="small" 
-                    />
-                  </TableCell>
                   <TableCell align="right">
                     <IconButton size="small" color="primary" onClick={() => handleOpen(plc)}><EditIcon /></IconButton>
                     <IconButton size="small" color="error" onClick={() => handleDelete(plc.id)}><DeleteIcon /></IconButton>

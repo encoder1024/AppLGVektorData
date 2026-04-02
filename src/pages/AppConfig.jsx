@@ -6,6 +6,7 @@ import {
 } from '@mui/material';
 import { Save as SaveIcon, Settings as SettingsIcon } from '@mui/icons-material';
 import api from '../services/api';
+import Barometer from '../components/instruments/Barometer';
 
 const AppConfig = () => {
   const [loading, setLoading] = useState(true);
@@ -230,6 +231,7 @@ const AppConfig = () => {
           </Card>
         </Grid>
       </Grid>
+      <Barometer />
     </Box>
   );
 };

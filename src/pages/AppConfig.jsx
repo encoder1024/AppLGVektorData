@@ -1,45 +1,66 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Box, Typography, Paper, TextField, Button, MenuItem, 
-  Alert, CircularProgress, Divider, Grid, Card, CardContent, CardHeader,
-  FormControlLabel, Switch, Typography as MuiTypography
-} from '@mui/material';
-import { Save as SaveIcon, Settings as SettingsIcon } from '@mui/icons-material';
-import api from '../services/api';
-import Barometer from '../components/instruments/Barometer';
+import React, { useState, useEffect } from "react";
+import {
+  Box,
+  Typography,
+  Paper,
+  TextField,
+  Button,
+  MenuItem,
+  Alert,
+  CircularProgress,
+  Divider,
+  Grid,
+  Card,
+  CardContent,
+  CardHeader,
+  FormControlLabel,
+  Switch,
+  Typography as MuiTypography,
+} from "@mui/material";
+import {
+  Save as SaveIcon,
+  Settings as SettingsIcon,
+} from "@mui/icons-material";
+import api from "../services/api";
+import Barometer from "../components/instruments/Barometer";
+// import TestInstruments from "../components/instruments/TestInstruments";
+import CalderaInteractiva from "../components/systems/Caldera";
 
 const AppConfig = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [angulo, setAngulo] = useState(0);
+
   // Agrupamos la configuración por temas
   const [config, setConfig] = useState({
-    connection_mode: 'local',
-    db_local_url: 'postgresql://user:pass@localhost:5432/industry_db',
-    db_remote_url: 'postgresql://admin:securepass@cloud-server.com',
+    connection_mode: "local",
+    db_local_url: "postgresql://user:pass@localhost:5432/industry_db",
+    db_remote_url: "postgresql://admin:securepass@cloud-server.com",
     use_remote_db: false,
     scan_rate_default_ms: 1000,
-    company_name: 'LG Vektor Data',
-    admin_email: 'admin@lgvektor.com',
-    retention_policy_days: 30
+    company_name: "LG Vektor Data",
+    admin_email: "admin@lgvektor.com",
+    retention_policy_days: 30,
   });
 
   useEffect(() => {
     const fetchConfig = async () => {
       setLoading(true);
       try {
-        const response = await api.get('/config');
+        const response = await api.get("/config");
         if (response.data && response.data.length > 0) {
           const newConfig = { ...config };
-          response.data.forEach(item => {
+          response.data.forEach((item) => {
             newConfig[item.key] = item.value;
           });
           setConfig(newConfig);
         }
       } catch (err) {
-        setError('Error al cargar la configuración. Asegúrate de tener permisos.');
+        setError(
+          "Error al cargar la configuración. Asegúrate de tener permisos.",
+        );
       } finally {
         setLoading(false);
       }
@@ -51,16 +72,16 @@ const AppConfig = () => {
     const { name, value, type, checked } = e.target;
     setConfig({
       ...config,
-      [name]: type === 'checkbox' ? checked : value
+      [name]: type === "checkbox" ? checked : value,
     });
   };
 
   const handleSave = async (key) => {
     setSaving(true);
-    setSuccess('');
-    setError('');
+    setSuccess("");
+    setError("");
     try {
-      await api.post('/config', { key, value: config[key] });
+      await api.post("/config", { key, value: config[key] });
       setSuccess(`Configuración '${key}' guardada con éxito`);
     } catch (err) {
       setError(`Error al guardar '${key}'`);
@@ -71,17 +92,17 @@ const AppConfig = () => {
 
   const handleSaveAll = async () => {
     setSaving(true);
-    setSuccess('');
-    setError('');
+    setSuccess("");
+    setError("");
     try {
       // Guardamos todas las claves secuencialmente o en paralelo
-      const promises = Object.keys(config).map(key => 
-        api.post('/config', { key, value: config[key] })
+      const promises = Object.keys(config).map((key) =>
+        api.post("/config", { key, value: config[key] }),
       );
       await Promise.all(promises);
-      setSuccess('Toda la configuración ha sido guardada con éxito');
+      setSuccess("Toda la configuración ha sido guardada con éxito");
     } catch (err) {
-      setError('Error al guardar la configuración completa');
+      setError("Error al guardar la configuración completa");
     } finally {
       setSaving(false);
     }
@@ -89,7 +110,14 @@ const AppConfig = () => {
 
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          height: "50vh",
+        }}
+      >
         <CircularProgress />
       </Box>
     );
@@ -97,13 +125,62 @@ const AppConfig = () => {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-        <Typography variant="h4" sx={{ fontWeight: 'bold', color: '#1e293b' }}>
+      <div>
+        <CalderaInteractiva datosSensores={{ temperatura: 90, presion: 10 }} />
+      </div>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: "20px",
+          padding: "40px",
+        }}
+      >
+        <h2>Control de Barómetro</h2>
+
+        {/* Componente del Barómetro */}
+        <Barometer valor={angulo} size={200} />
+
+        {/* Slider para mover la aguja */}
+        <div style={{ width: "300px", textAlign: "center" }}>
+          <p>
+            Ángulo actual: <strong>{angulo}°</strong>
+          </p>
+          <input
+            type="range"
+            min="0"
+            max="360"
+            value={angulo}
+            onChange={(e) => setAngulo(Number(e.target.value))}
+            style={{ width: "100%", cursor: "pointer" }}
+          />
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              marginTop: "10px",
+            }}
+          >
+            <button onClick={() => setAngulo(0)}>Min</button>
+            <button onClick={() => setAngulo(136)}>Centro</button>
+            <button onClick={() => setAngulo(271)}>Max</button>
+          </div>
+        </div>
+      </div>
+      <Box sx={{ display: "flex", justifyContent: "space-between", mb: 3 }}>
+        <Typography variant="h4" sx={{ fontWeight: "bold", color: "#1e293b" }}>
           Configuración del Sistema
         </Typography>
-        <Button 
-          variant="contained" 
-          startIcon={saving ? <CircularProgress size={20} color="inherit" /> : <SaveIcon />}
+        <Button
+          variant="contained"
+          startIcon={
+            saving ? (
+              <CircularProgress size={20} color="inherit" />
+            ) : (
+              <SaveIcon />
+            )
+          }
           onClick={handleSaveAll}
           disabled={saving}
         >
@@ -111,21 +188,29 @@ const AppConfig = () => {
         </Button>
       </Box>
 
-      {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
-      {success && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess('')}>{success}</Alert>}
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError("")}>
+          {error}
+        </Alert>
+      )}
+      {success && (
+        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess("")}>
+          {success}
+        </Alert>
+      )}
 
       <Grid container spacing={3}>
         {/* Sección de Conectividad */}
         <Grid item xs={12} md={6}>
           <Card elevation={2}>
-            <CardHeader 
-              title="Conectividad y Base de Datos" 
+            <CardHeader
+              title="Conectividad y Base de Datos"
               subheader="Configura cómo se conecta la aplicación al hardware y a la base de datos"
               avatar={<SettingsIcon color="primary" />}
             />
             <Divider />
             <CardContent>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 2.5 }}>
                 <TextField
                   select
                   fullWidth
@@ -159,10 +244,10 @@ const AppConfig = () => {
 
                 <FormControlLabel
                   control={
-                    <Switch 
+                    <Switch
                       name="use_remote_db"
-                      checked={config.use_remote_db} 
-                      onChange={handleChange} 
+                      checked={config.use_remote_db}
+                      onChange={handleChange}
                     />
                   }
                   label="Usar Base de Datos Remota por defecto"
@@ -175,14 +260,14 @@ const AppConfig = () => {
         {/* Sección de Operación Industrial */}
         <Grid item xs={12} md={6}>
           <Card elevation={2}>
-            <CardHeader 
-              title="Parámetros de Operación" 
+            <CardHeader
+              title="Parámetros de Operación"
               subheader="Ajustes por defecto para la adquisición de datos"
               avatar={<SettingsIcon color="secondary" />}
             />
             <Divider />
             <CardContent>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 2.5 }}>
                 <TextField
                   fullWidth
                   name="scan_rate_default_ms"
@@ -205,13 +290,13 @@ const AppConfig = () => {
           </Card>
 
           <Card elevation={2} sx={{ mt: 3 }}>
-            <CardHeader 
-              title="Información de la Empresa" 
+            <CardHeader
+              title="Información de la Empresa"
               avatar={<SettingsIcon color="action" />}
             />
             <Divider />
             <CardContent>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 2.5 }}>
                 <TextField
                   fullWidth
                   name="company_name"
@@ -231,7 +316,6 @@ const AppConfig = () => {
           </Card>
         </Grid>
       </Grid>
-      <Barometer />
     </Box>
   );
 };

@@ -7,6 +7,7 @@ import {
   CircularProgress,
   Alert,
   IconButton,
+  Button,
   Chip,
   Stack
 } from '@mui/material';
@@ -19,12 +20,16 @@ import {
   CheckCircle as CheckIcon,
   ToggleOn as ToggleOnIcon,
   RadioButtonChecked as PulseIcon,
-  SettingsInputComponent as ActuatorIcon
+  SettingsInputComponent as ActuatorIcon,
+  Fullscreen as FullscreenIcon,
+  FullscreenExit as FullscreenExitIcon
 } from '@mui/icons-material';
 import GaugeComponent from 'react-gauge-component';
 import { io } from 'socket.io-client';
+import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { Fireplace as BoilerIcon } from '@mui/icons-material';
 
 const SWITCH_UI_TYPES = new Set(['SWITCH_ON_OFF', 'SELECTOR_MODO']);
 const PULSE_UI_TYPES = new Set(['PULSADOR_MOMENTANEO']);
@@ -211,6 +216,7 @@ const ActuatorIllustration = ({ actuator, status }) => {
 
 const Dashboard = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [sensors, setSensors] = useState([]);
   const [actuators, setActuators] = useState([]);
   const [readings, setReadings] = useState({});
@@ -221,6 +227,29 @@ const Dashboard = () => {
   const [error, setError] = useState('');
   const [cardOrder, setCardOrder] = useState([]);
   const [draggedCardId, setDraggedCardId] = useState(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch((err) => {
+        console.error(`Error al intentar entrar en pantalla completa: ${err.message}`);
+      });
+      setIsFullscreen(true);
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+        setIsFullscreen(false);
+      }
+    }
+  };
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
 
   const isAdmin = user?.role === 'ADMIN';
   const canControlActuators = ['ADMIN', 'DEVELOPER', 'LIDER', 'TECHNICIAN'].includes(user?.role);
@@ -486,9 +515,25 @@ const Dashboard = () => {
           </Box>
         </Box>
 
-        <IconButton onClick={fetchDashboardData}>
-          <RefreshIcon />
-        </IconButton>
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <IconButton onClick={toggleFullscreen} sx={{ mr: 1 }} title={isFullscreen ? "Salir de pantalla completa" : "Ver en pantalla completa"}>
+            {isFullscreen ? <FullscreenExitIcon /> : <FullscreenIcon />}
+          </IconButton>
+
+          <IconButton onClick={fetchDashboardData} sx={{ mr: 1 }}>
+            <RefreshIcon />
+          </IconButton>
+
+          <Button
+            variant="contained"
+            color="secondary"
+            startIcon={<BoilerIcon />}
+            onClick={() => navigate('/caldera')}
+            sx={{ borderRadius: 2, fontWeight: 'bold' }}
+          >
+            Caldera
+          </Button>
+        </Box>
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}

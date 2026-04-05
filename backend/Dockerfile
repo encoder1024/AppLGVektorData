@@ -1,4 +1,8 @@
 FROM node:20.19
+
+# Instalar iputils-ping para permitir chequeos de red ICMP
+RUN apt-get update && apt-get install -y iputils-ping && rm -rf /var/lib/apt/lists/*
+
 # Seteamos el directorio de trabajo dentro del contenedor
 WORKDIR /app
 

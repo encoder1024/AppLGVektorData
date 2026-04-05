@@ -16,8 +16,10 @@ import actuatorActionsRoutes from './routes/actuatorActionsRoutes.js';
 import systemHealthRoutes from './routes/systemHealthRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import appConfigRoutes from './routes/appConfigRoutes.js';
+import infrastructureRoutes from './routes/infrastructureRoutes.js';
 import plcManager from './services/plcManager.js';
 import systemHealthService from './services/systemHealthService.js';
+import networkMonitor from './services/networkMonitor.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -49,6 +51,7 @@ app.use('/api/actuator-actions', actuatorActionsRoutes);
 app.use('/api/system-health', systemHealthRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/config', appConfigRoutes);
+app.use('/api/infrastructure', infrastructureRoutes);
 
 async function initSystem() {
   let retries = 15;
@@ -66,6 +69,10 @@ async function initSystem() {
 
       await systemHealthService.start();
       console.log('Motor de housekeeping de salud iniciado.');
+
+      networkMonitor.setIO(io);
+      await networkMonitor.start();
+      console.log('Motor de monitoreo de red industrial iniciado.');
       return;
     } catch (err) {
       retries -= 1;

@@ -1,6 +1,7 @@
 services:
   timescaledb:
     image: timescale/timescaledb:latest-pg14
+    restart: always # Dato clave: Para que esto funcione realmente "al encender la PC", asegurate de que el servicio de Docker esté habilitado para arrancar con el sistema operativo (en Linux usás sudo systemctl enable docker).
     container_name: timescaledb-lgvektor
     environment:
       POSTGRES_USER: ${VITE_DB_USER:-user}
@@ -17,6 +18,7 @@ services:
     build: 
       context: .
       dockerfile: Dockerfile
+    restart: always # Dato clave: Para que esto funcione realmente "al encender la PC", asegurate de que el servicio de Docker esté habilitado para arrancar con el sistema operativo (en Linux usás sudo systemctl enable docker).
     container_name: frontend-lgvektor
     ports:
       - "5173:5173"
@@ -29,6 +31,7 @@ services:
 
   backend:
     build: ./backend
+    restart: always # Dato clave: Para que esto funcione realmente "al encender la PC", asegurate de que el servicio de Docker esté habilitado para arrancar con el sistema operativo (en Linux usás sudo systemctl enable docker).
     container_name: backend-lgvektor
     ports:
       - "3000:3000"

@@ -1,6 +1,7 @@
 import db from '../config/db.js';
 import { logAudit } from '../utils/auditLogger.js';
 import plcManager from '../services/plcManager.js';
+import networkMonitor from '../services/networkMonitor.js';
 
 const toNullableNumber = (value) => {
   if (value === '' || value === null || value === undefined) {
@@ -77,6 +78,8 @@ const createPLC = async (req, res) => {
       plcManager.connect(newPlc);
     }
 
+    await networkMonitor.refresh();
+
     await logAudit(
       req.user.id,
       'PLC_CREATE',
@@ -110,6 +113,8 @@ const updatePLC = async (req, res) => {
       plcManager.disconnect(updatedPlc.id);
     }
 
+    await networkMonitor.refresh();
+
     await logAudit(
       req.user.id,
       'PLC_UPDATE',
@@ -135,6 +140,8 @@ const deletePLC = async (req, res) => {
 
     await db('plcs').where({ id }).del();
     plcManager.disconnect(id);
+
+    await networkMonitor.refresh();
 
     await logAudit(
       req.user.id,

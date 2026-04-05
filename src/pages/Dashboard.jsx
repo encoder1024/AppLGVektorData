@@ -221,6 +221,7 @@ const Dashboard = () => {
   const [actuators, setActuators] = useState([]);
   const [readings, setReadings] = useState({});
   const [latestActuatorActions, setLatestActuatorActions] = useState({});
+  const [networkStatus, setNetworkStatus] = useState([]);
   const [actuatorCommandLoading, setActuatorCommandLoading] = useState({});
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(false);
@@ -342,6 +343,9 @@ const Dashboard = () => {
     socket.on('disconnect', () => setConnected(false));
     socket.on('sensor_update', (data) => {
       setReadings((prev) => ({ ...prev, [data.sensor_id]: data.value }));
+    });
+    socket.on('network_status_update', (data) => {
+      setNetworkStatus(data);
     });
     socket.on('actuator_update', (data) => {
       setActuatorCommandState(data.actuator_id, {
@@ -504,7 +508,7 @@ const Dashboard = () => {
           <Typography variant="h4" sx={{ fontWeight: 'bold', color: '#1e293b' }}>
             HMI Real-Time
           </Typography>
-          <Box sx={{ mt: 1 }}>
+          <Box sx={{ mt: 1, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
             <Chip
               icon={connected ? <WifiIcon /> : <WifiOffIcon />}
               label={connected ? 'POLLING ACTIVO' : 'RECONECTANDO...'}
@@ -512,6 +516,20 @@ const Dashboard = () => {
               variant="outlined"
               size="small"
             />
+            {networkStatus.map((node) => (
+              <Chip
+                key={node.id}
+                label={`${node.tag_name}: ${node.status}`}
+                color={
+                  node.status === 'UP' ? 'success' : 
+                  node.status === 'DEGRADED' ? 'warning' : 'error'
+                }
+                size="small"
+                variant="filled"
+                title={`IP: ${node.ip} | Latencia: ${node.latency ? node.latency + 'ms' : 'N/A'}`}
+                sx={{ fontWeight: 'bold' }}
+              />
+            ))}
           </Box>
         </Box>
 
@@ -647,7 +665,7 @@ const Dashboard = () => {
                           { limit: sensor.warning_low || sensor.min_range, color: '#f59e0b' },
                           { limit: sensor.warning_high || sensor.max_range, color: '#10b981' },
                           { limit: sensor.alert_high || sensor.warning_high, color: '#f59e0b' },
-                          { limit: sensor.alert_high || sensor.max_range, color: '#ef4444' }
+                          { limit: sensor.alert_high+0.1 || sensor.max_range, color: '#ef4444' }
                         ]
                           .filter((arc) => arc.limit !== undefined && arc.limit !== null)
                           .sort((a, b) => a.limit - b.limit)

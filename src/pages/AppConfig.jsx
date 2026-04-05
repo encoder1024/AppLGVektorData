@@ -31,7 +31,6 @@ const AppConfig = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [angulo, setAngulo] = useState(0);
 
   // Agrupamos la configuración por temas
   const [config, setConfig] = useState({
@@ -125,49 +124,6 @@ const AppConfig = () => {
 
   return (
     <Box>
-      <div>
-        <CalderaInteractiva datosSensores={{ temperatura: 90, presion: 10 }} />
-      </div>
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: "20px",
-          padding: "40px",
-        }}
-      >
-        <h2>Control de Barómetro</h2>
-
-        {/* Componente del Barómetro */}
-        <Barometer valor={angulo} size={200} />
-
-        {/* Slider para mover la aguja */}
-        <div style={{ width: "300px", textAlign: "center" }}>
-          <p>
-            Ángulo actual: <strong>{angulo}°</strong>
-          </p>
-          <input
-            type="range"
-            min="0"
-            max="360"
-            value={angulo}
-            onChange={(e) => setAngulo(Number(e.target.value))}
-            style={{ width: "100%", cursor: "pointer" }}
-          />
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              marginTop: "10px",
-            }}
-          >
-            <button onClick={() => setAngulo(0)}>Min</button>
-            <button onClick={() => setAngulo(136)}>Centro</button>
-            <button onClick={() => setAngulo(271)}>Max</button>
-          </div>
-        </div>
-      </div>
       <Box sx={{ display: "flex", justifyContent: "space-between", mb: 3 }}>
         <Typography variant="h4" sx={{ fontWeight: "bold", color: "#1e293b" }}>
           Configuración del Sistema

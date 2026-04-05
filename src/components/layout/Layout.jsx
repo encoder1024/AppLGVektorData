@@ -82,6 +82,7 @@ const Layout = () => {
           backgroundColor: '#1e293b',
           boxShadow: 'none',
           borderBottom: '1px solid rgba(255, 255, 255, 0.12)',
+          borderRadius: 0,
         }}
       >
         <Toolbar>

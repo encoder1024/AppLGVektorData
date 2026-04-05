@@ -148,7 +148,7 @@ const getActuatorStatus = (actuator, action) => {
 
   return {
     active,
-    color: active ? '#2563eb' : '#64748b',
+    color: active ? '#10b981' : '#64748b',
     label: active ? 'SALIDA ACTIVA' : 'SALIDA EN REPOSO',
     actionLabel: parsedState.label,
     valueText: variant === 'pulse' ? (active ? 'PULSE' : 'READY') : parsedState.valueText,
@@ -167,7 +167,7 @@ const ActuatorIllustration = ({ actuator, status }) => {
         <rect x="64" y="34" width="92" height="20" rx="10" fill="#94a3b8" />
         <g style={{ transformOrigin: '110px 36px', transform: status.active ? 'translateY(12px)' : 'translateY(0px)', transition: 'transform 180ms ease' }}>
           <ellipse cx="110" cy="36" rx="48" ry="24" fill={status.active ? '#2563eb' : '#e2e8f0'} />
-          <ellipse cx="110" cy="31" rx="36" ry="15" fill={status.active ? '#60a5fa' : '#f8fafc'} />
+          <ellipse cx="110" cy="31" rx="36" ry="15" fill={status.active ? '#10b981' : '#f8fafc'} />
         </g>
       </svg>
     );
@@ -190,14 +190,14 @@ const ActuatorIllustration = ({ actuator, status }) => {
           cy="60"
           r="28"
           fill="#ffffff"
-          stroke={status.active ? '#2563eb' : '#94a3b8'}
+          stroke={status.active ? '#10b981' : '#94a3b8'}
           strokeWidth="4"
           style={{ transition: 'cx 220ms ease, stroke 220ms ease' }}
         />
         <text x="48" y="106" fontSize="16" fill="#475569" fontWeight="700">
           OFF
         </text>
-        <text x="152" y="106" fontSize="16" fill="#2563eb" fontWeight="700" textAnchor="end">
+        <text x="152" y="106" fontSize="16" fill="#10b981" fontWeight="700" textAnchor="end">
           ON
         </text>
       </svg>

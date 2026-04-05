@@ -34,11 +34,15 @@ import {
   SettingsInputComponent as PLCIcon,
   Refresh as RefreshIcon,
   Delete as DeleteIcon,
+  Link as LinkIcon,
 } from '@mui/icons-material';
 import { io } from 'socket.io-client';
 import api from '../services/api';
 
+const CONNECTION_TYPES = ['WIRED', 'WIRELESS', 'FIBER', 'LOGICAL', 'VLAN'];
+
 // --- NODOS PERSONALIZADOS ---
+// ... (CustomNode code remains the same or slightly adjusted if needed)
 const CustomNode = ({ data }) => {
   const isPLC = data.type === 'PLC';
   const isServer = data.type === 'SERVER';
@@ -104,7 +108,10 @@ const RedIndustrial = () => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [openDialog, setOpenDialog] = useState(false);
+  const [openEdgeDialog, setOpenEdgeDialog] = useState(false);
   const [editingNode, setEditingNode] = useState(null);
+  const [editingEdge, setEditingEdge] = useState(null);
+  
   const [formData, setFormData] = useState({
     nombre: '',
     tipo: 'SWITCH',
@@ -112,24 +119,23 @@ const RedIndustrial = () => {
     descripcion: '',
   });
 
-  const onConnect = useCallback(
-    (params) => setEdges((eds) => addEdge({ ...params, animated: true }, eds)),
-    [setEdges],
-  );
+  const [edgeFormData, setEdgeFormData] = useState({
+    type: 'WIRED',
+    metadata: '',
+  });
 
   const fetchNetworkData = async () => {
     try {
-      const [plcRes, infraResponse] = await Promise.all([
+      const [plcRes, infraResponse, connResponse] = await Promise.all([
         api.get('/plcs'),
-        api.get('/infrastructure')
+        api.get('/infrastructure'),
+        api.get('/infrastructure/connections')
       ]);
 
       const allNodes = [];
-      const allEdges = [];
-
-      // Nodo Servidor (Encontrarlo o crearlo virtualmente si no existe)
-      const serverNode = infraResponse.data.find(n => n.tipo === 'SERVER') || { id: 0, nombre: 'Server', ip_address: '127.0.0.1' };
       
+      // Nodo Servidor
+      const serverNode = infraResponse.data.find(n => n.tipo === 'SERVER') || { id: 0, nombre: 'Server', ip_address: '127.0.0.1' };
       const serverId = `infra-${serverNode.id}`;
       allNodes.push({
         id: serverId,
@@ -138,7 +144,7 @@ const RedIndustrial = () => {
         data: { label: serverNode.nombre, ip: serverNode.ip_address, type: 'SERVER', status: 'UNKNOWN' },
       });
 
-      // Procesar Infraestructura (Switches/Routers)
+      // Procesar Infraestructura
       infraResponse.data.filter(n => n.tipo !== 'SERVER').forEach((node, index) => {
         const id = `infra-${node.id}`;
         allNodes.push({
@@ -147,8 +153,6 @@ const RedIndustrial = () => {
           position: { x: 200 + (index * 250), y: 250 },
           data: { label: node.nombre, ip: node.ip_address, type: node.tipo, status: 'UNKNOWN', db_id: node.id },
         });
-        // Conectar al servidor
-        allEdges.push({ id: `e-${serverId}-${id}`, source: serverId, target: id, animated: true });
       });
 
       // Procesar PLCs
@@ -160,20 +164,54 @@ const RedIndustrial = () => {
           position: { x: 100 + (index * 200), y: 450 },
           data: { label: plc.nombre, ip: plc.ip_address, type: 'PLC', status: 'UNKNOWN', db_id: plc.id },
         });
-        
-        // Lógica de conexión simple: conectar al primer switch si existe, sino al servidor
-        const firstSwitch = allNodes.find(n => n.data.type === 'SWITCH');
-        const targetId = firstSwitch ? firstSwitch.id : serverId;
-        
-        allEdges.push({ id: `e-${targetId}-${id}`, source: targetId, target: id });
       });
 
+      // Procesar Conexiones (Edges)
+      const dbEdges = connResponse.data.map(conn => ({
+        id: `e-${conn.id}`,
+        source: conn.source_id,
+        target: conn.target_id,
+        label: conn.type,
+        animated: conn.type === 'LOGICAL' || conn.type === 'VLAN',
+        data: { db_id: conn.id, type: conn.type, metadata: conn.metadata },
+        style: { 
+          stroke: conn.type === 'FIBER' ? '#06b6d4' : conn.type === 'WIRELESS' ? '#f59e0b' : '#64748b',
+          strokeWidth: 2 
+        }
+      }));
+
       setNodes(allNodes);
-      setEdges(allEdges);
+      setEdges(dbEdges);
     } catch (err) {
       console.error('Error al cargar topología:', err);
     }
   };
+
+  const onConnect = useCallback(
+    async (params) => {
+      try {
+        const { source, target } = params;
+        const res = await api.post('/infrastructure/connections', {
+          source_id: source,
+          target_id: target,
+          type: 'WIRED'
+        });
+        
+        const newEdge = {
+          id: `e-${res.data.id}`,
+          source: res.data.source_id,
+          target: res.data.target_id,
+          label: res.data.type,
+          data: { db_id: res.data.id, type: res.data.type }
+        };
+        
+        setEdges((eds) => addEdge(newEdge, eds));
+      } catch (err) {
+        alert('Error al crear conexión: ' + (err.response?.data?.message || err.message));
+      }
+    },
+    [setEdges],
+  );
 
   useEffect(() => {
     fetchNetworkData();
@@ -214,13 +252,22 @@ const RedIndustrial = () => {
         nombre: node.data.label,
         tipo: node.data.type,
         ip_address: node.data.ip,
-        descripcion: '',
+        descripcion: node.data.descripcion || '',
       });
       setOpenDialog(true);
     }
   };
 
-  const handleSave = async () => {
+  const handleEdgeClick = (event, edge) => {
+    setEditingEdge(edge);
+    setEdgeFormData({
+      type: edge.data.type,
+      metadata: edge.data.metadata || '',
+    });
+    setOpenEdgeDialog(true);
+  };
+
+  const handleSaveNode = async () => {
     try {
       if (editingNode) {
         await api.put(`/infrastructure/${editingNode.data.db_id}`, formData);
@@ -234,7 +281,7 @@ const RedIndustrial = () => {
     }
   };
 
-  const handleDelete = async () => {
+  const handleDeleteNode = async () => {
     if (!editingNode) return;
     if (window.confirm('¿Eliminar este equipo de infraestructura?')) {
       try {
@@ -243,6 +290,29 @@ const RedIndustrial = () => {
         fetchNetworkData();
       } catch (err) {
         alert('Error al eliminar');
+      }
+    }
+  };
+
+  const handleSaveEdge = async () => {
+    try {
+      await api.put(`/infrastructure/connections/${editingEdge.data.db_id}`, edgeFormData);
+      setOpenEdgeDialog(false);
+      fetchNetworkData();
+    } catch (err) {
+      alert('Error al actualizar conexión: ' + err.message);
+    }
+  };
+
+  const handleDeleteEdge = async () => {
+    if (!editingEdge) return;
+    if (window.confirm('¿Eliminar esta conexión?')) {
+      try {
+        await api.delete(`/infrastructure/connections/${editingEdge.data.db_id}`);
+        setOpenEdgeDialog(false);
+        fetchNetworkData();
+      } catch (err) {
+        alert('Error al eliminar conexión');
       }
     }
   };
@@ -272,6 +342,7 @@ const RedIndustrial = () => {
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           onNodeClick={handleNodeClick}
+          onEdgeClick={handleEdgeClick}
           nodeTypes={nodeTypes}
           fitView
         >
@@ -281,6 +352,7 @@ const RedIndustrial = () => {
         </ReactFlow>
       </Paper>
 
+      {/* DIALOGO NODO */}
       <Dialog open={openDialog} onClose={() => setOpenDialog(false)}>
         <DialogTitle>{editingNode ? 'Editar Equipo de Red' : 'Añadir Nuevo Equipo'}</DialogTitle>
         <DialogContent sx={{ pt: 2, display: 'flex', flexDirection: 'column', gap: 2, minWidth: 400 }}>
@@ -320,13 +392,55 @@ const RedIndustrial = () => {
         </DialogContent>
         <DialogActions sx={{ p: 2, justifyContent: 'space-between' }}>
           {editingNode ? (
-            <Button color="error" startIcon={<DeleteIcon />} onClick={handleDelete}>
+            <Button color="error" startIcon={<DeleteIcon />} onClick={handleDeleteNode}>
               Eliminar
             </Button>
           ) : <Box />}
           <Box>
             <Button onClick={() => setOpenDialog(false)} sx={{ mr: 1 }}>Cancelar</Button>
-            <Button variant="contained" onClick={handleSave}>Guardar</Button>
+            <Button variant="contained" onClick={handleSaveNode}>Guardar</Button>
+          </Box>
+        </DialogActions>
+      </Dialog>
+
+      {/* DIALOGO CONEXIÓN */}
+      <Dialog open={openEdgeDialog} onClose={() => setOpenEdgeDialog(false)}>
+        <DialogTitle>Configurar Conexión de Red</DialogTitle>
+        <DialogContent sx={{ pt: 2, display: 'flex', flexDirection: 'column', gap: 2, minWidth: 400 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+            <LinkIcon sx={{ mr: 1, color: 'text.secondary' }} />
+            <Typography variant="body2" color="textSecondary">
+              Desde: <strong>{editingEdge?.source}</strong> → Hasta: <strong>{editingEdge?.target}</strong>
+            </Typography>
+          </Box>
+          
+          <TextField
+            select
+            label="Tipo de Conexión"
+            fullWidth
+            value={edgeFormData.type}
+            onChange={(e) => setEdgeFormData({ ...edgeFormData, type: e.target.value })}
+          >
+            {CONNECTION_TYPES.map(type => (
+              <MenuItem key={type} value={type}>{type}</MenuItem>
+            ))}
+          </TextField>
+          
+          <TextField
+            label="Metadatos / Notas"
+            fullWidth
+            placeholder="Ej: Puerto GI0/1, SSID: Industrial_WiFi"
+            value={edgeFormData.metadata}
+            onChange={(e) => setEdgeFormData({ ...edgeFormData, metadata: e.target.value })}
+          />
+        </DialogContent>
+        <DialogActions sx={{ p: 2, justifyContent: 'space-between' }}>
+          <Button color="error" startIcon={<DeleteIcon />} onClick={handleDeleteEdge}>
+            Eliminar
+          </Button>
+          <Box>
+            <Button onClick={() => setOpenEdgeDialog(false)} sx={{ mr: 1 }}>Cancelar</Button>
+            <Button variant="contained" onClick={handleSaveEdge}>Actualizar</Button>
           </Box>
         </DialogActions>
       </Dialog>

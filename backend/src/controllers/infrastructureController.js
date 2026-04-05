@@ -42,4 +42,50 @@ const deleteNode = async (req, res) => {
   }
 };
 
-export default { getNodes, createNode, updateNode, deleteNode };
+const getConnections = async (req, res) => {
+  try {
+    const connections = await db('infrastructure_connections').select('*');
+    res.json(connections);
+  } catch (error) {
+    res.status(500).json({ message: 'Error al obtener conexiones', error: error.message });
+  }
+};
+
+const createConnection = async (req, res) => {
+  try {
+    const { source_id, target_id, type } = req.body;
+    const [newConnection] = await db('infrastructure_connections').insert({
+      source_id,
+      target_id,
+      type: type || 'WIRED'
+    }).returning('*');
+    res.status(201).json(newConnection);
+  } catch (error) {
+    res.status(500).json({ message: 'Error al crear conexión', error: error.message });
+  }
+};
+
+const updateConnection = async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [updatedConnection] = await db('infrastructure_connections')
+      .where({ id })
+      .update(req.body)
+      .returning('*');
+    res.json(updatedConnection);
+  } catch (error) {
+    res.status(500).json({ message: 'Error al actualizar conexión', error: error.message });
+  }
+};
+
+const deleteConnection = async (req, res) => {
+  const { id } = req.params;
+  try {
+    await db('infrastructure_connections').where({ id }).del();
+    res.json({ message: 'Conexión eliminada correctamente' });
+  } catch (error) {
+    res.status(500).json({ message: 'Error al eliminar conexión', error: error.message });
+  }
+};
+
+export default { getNodes, createNode, updateNode, deleteNode, getConnections, createConnection, updateConnection, deleteConnection };

@@ -1,5 +1,5 @@
-import db from '../config/db.js'; // Importar la conexión de la base de datos como módulo ES
-import { logAudit } from '../utils/auditLogger.js'; // Importar el logger de auditoría
+import db from '../config/db.js';
+import { logAudit } from '../utils/auditLogger.js';
 
 export const getAllSensorEvents = async (req, res) => {
   try {
@@ -24,23 +24,37 @@ export const getAllSensorEvents = async (req, res) => {
     }
 
     const events = await query.orderBy('timestamp', 'desc');
+    const userId = req.user ? req.user.id : null;
 
-    // Log the successful retrieval of sensor events
-    const userId = req.user ? req.user.id : null; // Placeholder for actual user ID
-    logAudit(userId, 'GET_SENSOR_EVENTS', 'Se obtuvieron eventos de sensores', {
+    await logAudit(
+      userId,
+      'GET_SENSOR_EVENTS',
+      null,
+      'Se obtuvieron eventos de sensores',
+      null,
+      {
         queryParameters: req.query,
         count: events.length
-    });
+      }
+    );
 
     res.status(200).json(events);
   } catch (err) {
-    console.error("Error fetching sensor events:", err);
-    // Log the error
-    const userId = req.user ? req.user.id : null; // Placeholder for actual user ID
-    logAudit(userId, 'ERROR_GET_SENSOR_EVENTS', 'Fallo al obtener eventos de sensores', {
+    console.error('Error fetching sensor events:', err);
+    const userId = req.user ? req.user.id : null;
+
+    await logAudit(
+      userId,
+      'ERROR_GET_SENSOR_EVENTS',
+      null,
+      'Fallo al obtener eventos de sensores',
+      null,
+      {
         error: err.message,
         queryParameters: req.query
-    });
+      }
+    );
+
     res.status(500).json({ error: 'Error interno del servidor al obtener eventos de sensores.' });
   }
 };

@@ -7,8 +7,9 @@ const router = express.Router();
 router.use(protect);
 
 router.get('/', actuatorController.getActuators);
+router.post('/:id/control', authorize('ADMIN', 'DEVELOPER', 'LIDER', 'TECHNICIAN'), actuatorController.controlActuator);
 
-// Solo ADMIN y DEVELOPER pueden gestionar la configuración física de actuadores
+// Solo ADMIN y DEVELOPER pueden gestionar la configuracion fisica de actuadores
 router.post('/', authorize('ADMIN', 'DEVELOPER'), actuatorController.createActuator);
 router.put('/:id', authorize('ADMIN', 'DEVELOPER'), actuatorController.updateActuator);
 router.delete('/:id', authorize('ADMIN', 'DEVELOPER'), actuatorController.deleteActuator);

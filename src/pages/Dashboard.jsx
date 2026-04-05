@@ -643,9 +643,10 @@ const Dashboard = () => {
                         padding: 0.02,
                         cornerRadius: 1,
                         subArcs: [
-                          { limit: sensor.alert_low || sensor.min_range, color: '#ef4444' },
+                          { limit: sensor.alert_low || sensor.min_range, color: '#3b82f6' },
                           { limit: sensor.warning_low || sensor.min_range, color: '#f59e0b' },
                           { limit: sensor.warning_high || sensor.max_range, color: '#10b981' },
+                          { limit: sensor.alert_high || sensor.warning_high, color: '#f59e0b' },
                           { limit: sensor.alert_high || sensor.max_range, color: '#ef4444' }
                         ]
                           .filter((arc) => arc.limit !== undefined && arc.limit !== null)

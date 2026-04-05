@@ -58,7 +58,6 @@ const CalderaView = () => {
       if (sensorId) {
         const match = String(data.sensor_id) === String(sensorId);
         if (match) {
-          console.log(`[CalderaView] MATCH! Sensor ${data.sensor_id} value: ${data.value}`);
           setDatosSensores((prev) => ({
             ...prev,
             temperatura: Number(data.value)

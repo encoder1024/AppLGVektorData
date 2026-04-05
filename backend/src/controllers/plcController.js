@@ -2,6 +2,53 @@ import db from '../config/db.js';
 import { logAudit } from '../utils/auditLogger.js';
 import plcManager from '../services/plcManager.js';
 
+const toNullableNumber = (value) => {
+  if (value === '' || value === null || value === undefined) {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
+const toBoolean = (value, defaultValue = true) => {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (value === '' || value === null || value === undefined) {
+    return defaultValue;
+  }
+  if (typeof value === 'number') {
+    return value !== 0;
+  }
+  return String(value).trim().toLowerCase() === 'true';
+};
+
+const getPlcTableColumns = async () => {
+  const info = await db('plcs').columnInfo();
+  return new Set(Object.keys(info));
+};
+
+const normalizePlcPayload = async (payload) => {
+  const columns = await getPlcTableColumns();
+
+  const normalized = {
+    nombre: payload.nombre,
+    marca: payload.marca,
+    protocolo: payload.protocolo,
+    ip_address: payload.ip_address,
+    puerto: toNullableNumber(payload.puerto) ?? 102,
+    unidad_id: toNullableNumber(payload.unidad_id) ?? 1,
+    scan_rate_ms: toNullableNumber(payload.scan_rate_ms) ?? 1000,
+    activo: columns.has('activo') ? toBoolean(payload.activo, true) : undefined,
+    zona: columns.has('zona') ? payload.zona || 'ZONA_A' : undefined,
+    orden_dashboard: columns.has('orden_dashboard') ? toNullableNumber(payload.orden_dashboard) ?? 0 : undefined,
+  };
+
+  return Object.fromEntries(
+    Object.entries(normalized).filter(([key, value]) => columns.has(key) && value !== undefined)
+  );
+};
+
 const getPLCs = async (req, res) => {
   try {
     const plcs = await db('plcs').select('*').orderBy('id', 'asc');
@@ -22,22 +69,10 @@ const getPLCById = async (req, res) => {
 };
 
 const createPLC = async (req, res) => {
-  const { nombre, marca, protocolo, ip_address, puerto, unidad_id, scan_rate_ms } = req.body;
-
   try {
-    const [newPlc] = await db('plcs')
-      .insert({
-        nombre,
-        marca,
-        protocolo,
-        ip_address,
-        puerto,
-        unidad_id: unidad_id || 1,
-        scan_rate_ms: scan_rate_ms || 1000
-      })
-      .returning('*');
+    const payload = await normalizePlcPayload(req.body);
+    const [newPlc] = await db('plcs').insert(payload).returning('*');
 
-    // Notificar al motor industrial si está activo
     if (newPlc.activo) {
       plcManager.connect(newPlc);
     }
@@ -46,7 +81,7 @@ const createPLC = async (req, res) => {
       req.user.id,
       'PLC_CREATE',
       newPlc.id,
-      `Se creó el PLC: ${nombre} (${marca} - ${protocolo})`,
+      `Se creo el PLC: ${newPlc.nombre} (${newPlc.marca} - ${newPlc.protocolo})`,
       null,
       newPlc,
       req.ip
@@ -61,18 +96,14 @@ const createPLC = async (req, res) => {
 
 const updatePLC = async (req, res) => {
   const { id } = req.params;
-  const updates = req.body;
 
   try {
     const oldPlc = await db('plcs').where({ id }).first();
     if (!oldPlc) return res.status(404).json({ message: 'PLC no encontrado' });
 
-    const [updatedPlc] = await db('plcs')
-      .where({ id })
-      .update(updates)
-      .returning('*');
+    const updates = await normalizePlcPayload(req.body);
+    const [updatedPlc] = await db('plcs').where({ id }).update(updates).returning('*');
 
-    // Sincronizar motor industrial
     if (updatedPlc.activo) {
       plcManager.connect(updatedPlc);
     } else {
@@ -83,7 +114,7 @@ const updatePLC = async (req, res) => {
       req.user.id,
       'PLC_UPDATE',
       id,
-      `Se actualizó la configuración del PLC: ${oldPlc.nombre}`,
+      `Se actualizo la configuracion del PLC: ${oldPlc.nombre}`,
       oldPlc,
       updatedPlc,
       req.ip
@@ -103,15 +134,13 @@ const deletePLC = async (req, res) => {
     if (!oldPlc) return res.status(404).json({ message: 'PLC no encontrado' });
 
     await db('plcs').where({ id }).del();
-
-    // Detener polling
     plcManager.disconnect(id);
 
     await logAudit(
       req.user.id,
       'PLC_DELETE',
       id,
-      `Se eliminó el PLC: ${oldPlc.nombre}`,
+      `Se elimino el PLC: ${oldPlc.nombre}`,
       oldPlc,
       null,
       req.ip

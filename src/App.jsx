@@ -11,6 +11,10 @@ import ConfigSensores from './pages/ConfigSensores';
 import ConfigCalibration from './pages/ConfigCalibration';
 import ConfigActuadores from './pages/ConfigActuadores';
 import Historicos from './pages/Historicos'; // Importar el nuevo componente Historicos
+import SaludSistema from './pages/SaludSistema';
+import Usuarios from './pages/Usuarios';
+import AppConfig from './pages/AppConfig';
+import CalderaView from './pages/CalderaView';
 
 // Tema personalizado industrial
 const theme = createTheme({
@@ -44,6 +48,14 @@ const PrivateRoute = ({ children }) => {
   return user ? children : <Navigate to="/login" />;
 };
 
+const RoleRoute = ({ children, roles }) => {
+  const { user, loading } = useAuth();
+
+  if (loading) return null;
+  if (!user) return <Navigate to="/login" />;
+  return roles.includes(user.role) ? children : <Navigate to="/" />;
+};
+
 function App() {
   return (
     <ThemeProvider theme={theme}>
@@ -56,13 +68,15 @@ function App() {
 
             <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
               <Route index element={<Dashboard />} />
+              <Route path="salud-sistema" element={<RoleRoute roles={['DEVELOPER', 'ADMIN']}><SaludSistema /></RoleRoute>} />
               <Route path="historicos" element={<Historicos />} /> {/* Usar el componente Historicos */}
               <Route path="config/plcs" element={<ConfigPLCs />} />
               <Route path="config/calibracion" element={<ConfigCalibration />} />
               <Route path="config/sensores" element={<ConfigSensores />} />
               <Route path="config/actuadores" element={<ConfigActuadores />} />
-              <Route path="admin/usuarios" element={<Typography variant="h4">Gestión Usuarios (Próximamente)</Typography>} />
-              <Route path="settings" element={<Typography variant="h4">Ajustes App (Próximamente)</Typography>} />
+              <Route path="caldera" element={<CalderaView />} />
+              <Route path="admin/usuarios" element={<RoleRoute roles={['ADMIN']}><Usuarios /></RoleRoute>} />
+              <Route path="settings" element={<RoleRoute roles={['ADMIN']}><AppConfig /></RoleRoute>} />
             </Route>
 
             <Route path="*" element={<Navigate to="/" />} />
@@ -74,4 +88,3 @@ function App() {
 }
 
 export default App;
-

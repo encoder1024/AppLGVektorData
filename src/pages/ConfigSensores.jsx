@@ -12,6 +12,7 @@ import api from '../services/api';
 
 const signalTypes = ['ANALOG_INPUT', 'ANALOG_OUTPUT', 'DIGITAL_INPUT', 'DIGITAL_OUTPUT'];
 const dataTypes = ['INT16', 'UINT16', 'INT32', 'UINT32', 'FLOAT32', 'BOOLEAN'];
+const zoneOptions = ['ZONA_A', 'ZONA_B'];
 const instrumentTypes = [
   { value: 'GAUGE_RADIAL', label: 'Gauge Radial (Reloj)' },
   { value: 'GAUGE_LINEAR', label: 'Barra Progresiva' },
@@ -55,7 +56,9 @@ const ConfigSensores = () => {
     warning_high: '',
     alert_low: '',
     alert_high: '',
-    activo: true
+    activo: true,
+    zona: 'ZONA_A',
+    orden_dashboard: 0
   });
 
   const fetchData = async () => {
@@ -96,7 +99,7 @@ const ConfigSensores = () => {
         tipo_instrumento: 'GAUGE_RADIAL',
         min_range: 0, max_range: 100, warning_low: '', warning_high: '',
         alert_low: '', alert_high: '',
-        activo: true
+        activo: true, zona: 'ZONA_A', orden_dashboard: 0
       });
     }
     setOpen(true);
@@ -249,6 +252,14 @@ const ConfigSensores = () => {
                 </Grid>
                 <Grid item xs={12} sm={6}>
                   <TextField fullWidth name="unidad_medida" label="Unidad de Medida (ej: °C, Bar, RPM)" value={formData.unidad_medida} onChange={handleChange} />
+                </Grid>
+                <Grid item xs={12} sm={3}>
+                  <TextField select fullWidth name="zona" label="Zona Dashboard" value={formData.zona || 'ZONA_A'} onChange={handleChange} required>
+                    {zoneOptions.map(zone => <MenuItem key={zone} value={zone}>{zone}</MenuItem>)}
+                  </TextField>
+                </Grid>
+                <Grid item xs={12} sm={3}>
+                  <TextField fullWidth name="orden_dashboard" label="Orden en Dashboard" type="number" value={formData.orden_dashboard ?? 0} onChange={handleChange} required />
                 </Grid>
               </Grid>
             </TabPanel>

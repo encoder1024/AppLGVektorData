@@ -16,13 +16,3 @@ body {
   min-width: 320px;
   min-height: 100vh;
 }
-
-/* Forzar la eliminación de cualquier backdrop fantasma fuera de los modales activos */
-.MuiBackdrop-root {
-  background-color: rgba(0, 0, 0, 0.5) !important;
-}
-
-/* Si el Drawer está cerrado, el backdrop debe desaparecer sí o sí */
-.MuiDrawer-root[style*="visibility: hidden"] + .MuiBackdrop-root {
-  display: none !important;
-}

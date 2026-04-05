@@ -1,19 +1,19 @@
-import React, { useState } from 'react';
-import { 
-  Box, 
-  Drawer, 
-  AppBar, 
-  Toolbar, 
-  List, 
-  Typography, 
-  Divider, 
-  IconButton, 
-  ListItem, 
-  ListItemButton, 
-  ListItemIcon, 
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  Box,
+  Drawer,
+  AppBar,
+  Toolbar,
+  List,
+  Typography,
+  Divider,
+  IconButton,
+  ListItem,
+  ListItemButton,
+  ListItemIcon,
   ListItemText,
   useTheme,
-  useMediaQuery
+  useMediaQuery,
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -22,11 +22,11 @@ import {
   People as PeopleIcon,
   History as HistoryIcon,
   ExitToApp as LogoutIcon,
-  ChevronLeft as ChevronLeftIcon,
   Sensors as SensorsIcon,
   SettingsInputComponent as PLCSIcon,
   Functions as FunctionsIcon,
-  ToggleOn as ToggleIcon
+  ToggleOn as ToggleIcon,
+  HealthAndSafety as HealthIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -35,45 +35,53 @@ const drawerWidth = 240;
 
 const Layout = () => {
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm')); // Solo móviles reales
-  const [open, setOpen] = useState(!isMobile); // Cerrado en móvil, abierto en escritorio
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const [open, setOpen] = useState(!isMobile);
+  const mainContentRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
 
+  useEffect(() => {
+    setOpen(!isMobile);
+  }, [isMobile]);
+
   const handleDrawerToggle = () => {
-    setOpen(!open);
+    setOpen((prev) => !prev);
   };
 
   const handleNavigation = (path) => {
     navigate(path);
-    if (isMobile) setOpen(false);
+    setOpen(false);
   };
+
+  useEffect(() => {
+    mainContentRef.current?.focus();
+  }, [location.pathname]);
 
   const menuItems = [
     { text: 'Panel Control', icon: <DashboardIcon />, path: '/', roles: ['ADMIN', 'LIDER', 'DEVELOPER', 'TECHNICIAN'] },
-    { text: 'Históricos', icon: <HistoryIcon />, path: '/historicos', roles: ['ADMIN', 'LIDER', 'DEVELOPER', 'TECHNICIAN'] },
-    { text: 'PLC Configuración', icon: <PLCSIcon />, path: '/config/plcs', roles: ['ADMIN', 'DEVELOPER'] },
-    { text: 'Perfiles Calibración', icon: <FunctionsIcon />, path: '/config/calibracion', roles: ['ADMIN', 'DEVELOPER'] },
-    { text: 'Sensores Configuración', icon: <SensorsIcon />, path: '/config/sensores', roles: ['ADMIN', 'DEVELOPER', 'LIDER'] },
+    { text: 'Salud del Sistema', icon: <HealthIcon />, path: '/salud-sistema', roles: ['DEVELOPER', 'ADMIN'] },
+    { text: 'Historicos', icon: <HistoryIcon />, path: '/historicos', roles: ['ADMIN', 'LIDER', 'DEVELOPER', 'TECHNICIAN'] },
+    { text: 'PLC Configuracion', icon: <PLCSIcon />, path: '/config/plcs', roles: ['ADMIN', 'DEVELOPER'] },
+    { text: 'Perfiles Calibracion', icon: <FunctionsIcon />, path: '/config/calibracion', roles: ['ADMIN', 'DEVELOPER'] },
+    { text: 'Sensores Configuracion', icon: <SensorsIcon />, path: '/config/sensores', roles: ['ADMIN', 'DEVELOPER', 'LIDER'] },
     { text: 'Actuadores', icon: <ToggleIcon />, path: '/config/actuadores', roles: ['ADMIN', 'DEVELOPER'] },
     { text: 'Usuarios', icon: <PeopleIcon />, path: '/admin/usuarios', roles: ['ADMIN'] },
-
     { text: 'Ajustes App', icon: <SettingsIcon />, path: '/settings', roles: ['ADMIN'] },
   ];
 
-  // Filtrar menú por rol
-  const filteredMenu = menuItems.filter(item => item.roles.includes(user?.role));
+  const filteredMenu = menuItems.filter((item) => item.roles.includes(user?.role));
 
   return (
     <Box sx={{ display: 'flex' }}>
       <AppBar
         position="fixed"
         sx={{
-          zIndex: (theme) => theme.zIndex.drawer + 1,
-          backgroundColor: '#1e293b', // Azul marino industrial
+          zIndex: (muiTheme) => muiTheme.zIndex.drawer + 1,
+          backgroundColor: '#1e293b',
           boxShadow: 'none',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.12)'
+          borderBottom: '1px solid rgba(255, 255, 255, 0.12)',
         }}
       >
         <Toolbar>
@@ -93,30 +101,26 @@ const Layout = () => {
             <Typography variant="body2" sx={{ display: { xs: 'none', sm: 'block' } }}>
               {user?.full_name} ({user?.role})
             </Typography>
-            <IconButton color="inherit" onClick={logout} title="Cerrar Sesión">
+            <IconButton color="inherit" onClick={logout} title="Cerrar Sesion">
               <LogoutIcon />
             </IconButton>
           </Box>
         </Toolbar>
       </AppBar>
-      
+
       <Drawer
-        variant={isMobile ? "temporary" : "persistent"}
+        variant="temporary"
         open={open}
-        onClose={isMobile ? handleDrawerToggle : undefined}
-        ModalProps={{
-          keepMounted: true, // Mejor rendimiento en móviles
-          hideBackdrop: true, // <--- SOLUCIÓN: El backdrop NUNCA aparecerá
-        }}
+        onClose={() => setOpen(false)}
         sx={{
           width: drawerWidth,
           flexShrink: 0,
-          [`& .MuiDrawer-paper`]: { 
-            width: drawerWidth, 
+          [`& .MuiDrawer-paper`]: {
+            width: drawerWidth,
             boxSizing: 'border-box',
-            backgroundColor: '#0f172a', // Fondo oscuro sideral
+            backgroundColor: '#0f172a',
             color: '#cbd5e1',
-            borderRight: '1px solid rgba(255, 255, 255, 0.12)'
+            borderRight: '1px solid rgba(255, 255, 255, 0.12)',
           },
         }}
       >
@@ -125,23 +129,21 @@ const Layout = () => {
           <List>
             {filteredMenu.map((item) => (
               <ListItem key={item.text} disablePadding>
-                <ListItemButton 
+                <ListItemButton
                   onClick={() => handleNavigation(item.path)}
                   selected={location.pathname === item.path}
                   sx={{
                     '&.Mui-selected': {
                       backgroundColor: 'rgba(56, 189, 248, 0.1)',
                       color: '#38bdf8',
-                      '& .MuiListItemIcon-root': { color: '#38bdf8' }
+                      '& .MuiListItemIcon-root': { color: '#38bdf8' },
                     },
                     '&:hover': {
-                      backgroundColor: 'rgba(255, 255, 255, 0.05)'
-                    }
+                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                    },
                   }}
                 >
-                  <ListItemIcon sx={{ color: '#64748b' }}>
-                    {item.icon}
-                  </ListItemIcon>
+                  <ListItemIcon sx={{ color: '#64748b' }}>{item.icon}</ListItemIcon>
                   <ListItemText primary={item.text} />
                 </ListItemButton>
               </ListItem>
@@ -150,25 +152,19 @@ const Layout = () => {
           <Divider sx={{ backgroundColor: 'rgba(255, 255, 255, 0.1)' }} />
         </Box>
       </Drawer>
-      
-      <Box 
-        component="main" 
-        sx={{ 
-          flexGrow: 1, 
-          p: 3, 
-          backgroundColor: '#f8fafc', // Fondo blanco humo
+
+      <Box
+        component="main"
+        ref={mainContentRef}
+        tabIndex={-1}
+        sx={{
+          flexGrow: 1,
+          px: { xs: 2, sm: 2 },
+          py: 3,
+          backgroundColor: '#f8fafc',
           minHeight: '100vh',
-          width: { sm: `calc(100% - ${open ? drawerWidth : 0}px)` },
-          transition: theme.transitions.create(['margin', 'width'], {
-            easing: theme.transitions.easing.sharp,
-            duration: theme.transitions.duration.leavingScreen,
-          }),
-          ...(open && !isMobile && {
-            transition: theme.transitions.create(['margin', 'width'], {
-              easing: theme.transitions.easing.easeOut,
-              duration: theme.transitions.duration.enteringScreen,
-            }),
-          })
+          boxSizing: 'border-box',
+          width: '100%',
         }}
       >
         <Toolbar />

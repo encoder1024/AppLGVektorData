@@ -6,6 +6,8 @@ import { Translate } from "@mui/icons-material";
 export const CalderaInteractiva = ({ datosSensores }) => {
   const [showTooltip, setShowTooltip] = useState(false);
 
+  console.log('[CalderaInteractiva] Render with:', datosSensores);
+
   return (
     <div style={{ position: "relative", width: "100%", maxWidth: "900px" }}>
       {/* 1. Imagen base de la caldera */}

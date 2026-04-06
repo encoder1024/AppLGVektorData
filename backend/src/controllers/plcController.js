@@ -32,12 +32,18 @@ const getPlcTableColumns = async () => {
 const normalizePlcPayload = async (payload) => {
   const columns = await getPlcTableColumns();
 
+  // Determinamos el puerto por defecto segun el protocolo
+  let defaultPort = 502;
+  if (payload.protocolo === 'S7') {
+    defaultPort = 102;
+  }
+
   const normalized = {
     nombre: payload.nombre,
     marca: payload.marca,
     protocolo: payload.protocolo,
     ip_address: payload.ip_address,
-    puerto: toNullableNumber(payload.puerto) ?? 102,
+    puerto: toNullableNumber(payload.puerto) ?? defaultPort,
     unidad_id: toNullableNumber(payload.unidad_id) ?? 1,
     scan_rate_ms: toNullableNumber(payload.scan_rate_ms) ?? 1000,
     activo: columns.has('activo') ? toBoolean(payload.activo, true) : undefined,
@@ -77,7 +83,10 @@ const createPLC = async (req, res) => {
     const [newPlc] = await db('plcs').insert(payload).returning('*');
 
     if (newPlc.activo) {
-      plcManager.connect(newPlc);
+      // Intentamos conectar pero no bloqueamos la respuesta si falla la red
+      plcManager.connect(newPlc).catch(err => 
+        console.error(`Error de conexion inmediata al crear PLC ${newPlc.nombre}:`, err.message)
+      );
     }
 
     await networkMonitor.refresh();
@@ -110,9 +119,12 @@ const updatePLC = async (req, res) => {
     const [updatedPlc] = await db('plcs').where({ id }).update(updates).returning('*');
 
     if (updatedPlc.activo) {
-      plcManager.connect(updatedPlc);
+      // Lanzamos conexion pero no esperamos el exito para responder al cliente
+      plcManager.connect(updatedPlc).catch(err => 
+        console.error(`Error de conexion inmediata al actualizar PLC ${updatedPlc.nombre}:`, err.message)
+      );
     } else {
-      plcManager.disconnect(updatedPlc.id);
+      await plcManager.disconnect(updatedPlc.id);
     }
 
     await networkMonitor.refresh();

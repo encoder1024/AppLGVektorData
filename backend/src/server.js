@@ -66,6 +66,7 @@ async function initSystem() {
 
       plcManager.setIO(io);
       await plcManager.initAll();
+      plcManager.startSupervisor(); // <--- Activamos el supervisor de resiliencia
       console.log('Motor de adquisición PLC iniciado.');
 
       await systemHealthService.start();

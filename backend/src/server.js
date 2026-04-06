@@ -20,6 +20,7 @@ import infrastructureRoutes from './routes/infrastructureRoutes.js';
 import plcManager from './services/plcManager.js';
 import systemHealthService from './services/systemHealthService.js';
 import networkMonitor from './services/networkMonitor.js';
+import { startMaintenanceService } from './services/maintenanceService.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -73,6 +74,10 @@ async function initSystem() {
       networkMonitor.setIO(io);
       await networkMonitor.start();
       console.log('Motor de monitoreo de red industrial iniciado.');
+      
+      startMaintenanceService();
+      console.log('Servicio de mantenimiento de la base de datos iniciado.');
+
       return;
     } catch (err) {
       retries -= 1;

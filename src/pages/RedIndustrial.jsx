@@ -150,7 +150,10 @@ const RedIndustrial = () => {
         allNodes.push({
           id,
           type: 'custom',
-          position: { x: 200 + (index * 250), y: 250 },
+          position: { 
+            x: node.pos_x || 200 + (index * 250), 
+            y: node.pos_y || 250 
+          },
           data: { label: node.nombre, ip: node.ip_address, type: node.tipo, status: 'UNKNOWN', db_id: node.id },
         });
       });
@@ -161,7 +164,10 @@ const RedIndustrial = () => {
         allNodes.push({
           id,
           type: 'custom',
-          position: { x: 100 + (index * 200), y: 450 },
+          position: { 
+            x: plc.pos_x || 100 + (index * 200), 
+            y: plc.pos_y || 450 
+          },
           data: { label: plc.nombre, ip: plc.ip_address, type: 'PLC', status: 'UNKNOWN', db_id: plc.id },
         });
       });
@@ -317,6 +323,33 @@ const RedIndustrial = () => {
     }
   };
 
+  const onNodeDragStop = useCallback(
+    async (event, node) => {
+      if (node.id.startsWith('infra-') && node.data.db_id) {
+        try {
+          await api.put(`/infrastructure/${node.data.db_id}`, {
+            pos_x: Math.round(node.position.x),
+            pos_y: Math.round(node.position.y)
+          });
+        } catch (err) {
+          console.error('Error al guardar posición infra:', err);
+          alert('No se pudo guardar la posición del nodo de infraestructura.');
+        }
+      } else if (node.id.startsWith('plc-') && node.data.db_id) {
+        try {
+          await api.put(`/plcs/${node.data.db_id}`, {
+            pos_x: Math.round(node.position.x),
+            pos_y: Math.round(node.position.y)
+          });
+        } catch (err) {
+          console.error('Error al guardar posición PLC:', err);
+          alert('No se pudo guardar la posición del PLC.');
+        }
+      }
+    },
+    []
+  );
+
   return (
     <Box sx={{ height: 'calc(100vh - 120px)', display: 'flex', flexDirection: 'column' }}>
       <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -342,6 +375,7 @@ const RedIndustrial = () => {
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           onNodeClick={handleNodeClick}
+          onNodeDragStop={onNodeDragStop}
           onEdgeClick={handleEdgeClick}
           nodeTypes={nodeTypes}
           fitView

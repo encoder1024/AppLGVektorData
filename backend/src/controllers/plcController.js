@@ -43,6 +43,8 @@ const normalizePlcPayload = async (payload) => {
     activo: columns.has('activo') ? toBoolean(payload.activo, true) : undefined,
     zona: columns.has('zona') ? payload.zona || 'ZONA_A' : undefined,
     orden_dashboard: columns.has('orden_dashboard') ? toNullableNumber(payload.orden_dashboard) ?? 0 : undefined,
+    pos_x: columns.has('pos_x') ? toNullableNumber(payload.pos_x) ?? 0 : undefined,
+    pos_y: columns.has('pos_y') ? toNullableNumber(payload.pos_y) ?? 0 : undefined,
   };
 
   return Object.fromEntries(

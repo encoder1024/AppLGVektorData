@@ -57,6 +57,7 @@ class PLCManager {
           await this.connect(plc);
         } catch (error) {
           console.error(`PLCManager: No se pudo conectar ${plc.nombre}:`, error.message);
+          // Continuamos con el siguiente PLC aunque este falle
         }
       }
     } catch (error) {

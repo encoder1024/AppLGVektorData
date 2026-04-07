@@ -650,7 +650,21 @@ const Dashboard = () => {
                     </Stack>
                   </Box>
 
-                  <Box sx={{ height: 110, px: 1.5 }}>
+                  <Box sx={{ height: 110, px: 1.5, position: 'relative' }}>
+                    {sensor.setpoint !== null && sensor.setpoint !== undefined && (
+                      <Box
+                        sx={{
+                          position: 'absolute',
+                          top: -5,
+                          right: 10,
+                          zIndex: 5,
+                        }}
+                      >
+                        <Typography variant="caption" sx={{ fontWeight: 'bold', color: '#059669', fontSize: '0.7rem', whiteSpace: 'nowrap' }}>
+                          SET: {sensor.setpoint.toFixed(1)} {sensor.unidad_medida}
+                        </Typography>
+                      </Box>
+                    )}
                     <GaugeComponent
                       value={value}
                       type="grafana"
@@ -663,7 +677,14 @@ const Dashboard = () => {
                         subArcs: [
                           { limit: sensor.alert_low || sensor.min_range, color: '#3b82f6' },
                           { limit: sensor.warning_low || sensor.min_range, color: '#f59e0b' },
-                          { limit: sensor.warning_high || sensor.max_range, color: '#10b981' },
+                          // Si hay setpoint, lo marcamos en NEGRO (ancho doble)
+                          ...(sensor.setpoint !== null ? [
+                            { limit: sensor.setpoint - 1.0, color: '#10b981' },
+                            { limit: sensor.setpoint + 1.0, color: '#000000' }, // Marca del setpoint en NEGRO
+                            { limit: sensor.warning_high || sensor.max_range, color: '#10b981' }
+                          ] : [
+                            { limit: sensor.warning_high || sensor.max_range, color: '#10b981' }
+                          ]),
                           { limit: sensor.alert_high || sensor.warning_high, color: '#f59e0b' },
                           { limit: sensor.alert_high+0.1 || sensor.max_range, color: '#ef4444' }
                         ]

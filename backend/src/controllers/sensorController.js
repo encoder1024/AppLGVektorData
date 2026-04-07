@@ -36,6 +36,7 @@ const normalizeSensorPayload = async (payload) => {
     warning_high: toNullableNumber(payload.warning_high),
     alert_low: toNullableNumber(payload.alert_low),
     alert_high: toNullableNumber(payload.alert_high),
+    setpoint: toNullableNumber(payload.setpoint),
     activo: payload.activo === undefined ? true : toBoolean(payload.activo),
   };
 

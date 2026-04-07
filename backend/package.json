@@ -24,7 +24,8 @@
     "nodes7": "^0.3.18",
     "pg": "^8.20.0",
     "ping": "^1.0.0",
-    "socket.io": "^4.8.3"
+    "socket.io": "^4.8.3",
+    "systeminformation": "^5.31.5"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"

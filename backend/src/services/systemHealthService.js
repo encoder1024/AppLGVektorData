@@ -1,5 +1,6 @@
 import db from '../config/db.js';
 import plcManager from './plcManager.js';
+import si from 'systeminformation';
 
 const HEALTH_INTERVAL_MS = Number(process.env.SYSTEM_HEALTH_INTERVAL_MS || 30000);
 
@@ -55,7 +56,7 @@ class SystemHealthService {
     this.isRunning = true;
     try {
       const snapshotTime = new Date();
-      const [plcs, sensors, actuators, latestSensorReadings, latestActuatorActions] = await Promise.all([
+      const [plcs, sensors, actuators, latestSensorReadings, latestActuatorActions, serverSnapshot] = await Promise.all([
         db('plcs').select('*').orderBy('id', 'asc'),
         db('sensors').select('*').orderBy('id', 'asc'),
         db('actuators as a')
@@ -63,7 +64,8 @@ class SystemHealthService {
           .leftJoin('plcs as p', 'a.plc_id', 'p.id')
           .orderBy('a.id', 'asc'),
         this.getLatestSensorReadings(),
-        this.getLatestActuatorActions()
+        this.getLatestActuatorActions(),
+        this.buildServerSnapshot(snapshotTime)
       ]);
 
       const latestSensorById = new Map(latestSensorReadings.map((row) => [row.sensor_id, row]));
@@ -87,12 +89,81 @@ class SystemHealthService {
       );
 
       const snapshotRows = [...plcSnapshots, ...sensorSnapshots, ...actuatorSnapshots];
+      if (serverSnapshot) {
+        snapshotRows.push(serverSnapshot);
+      }
 
       if (snapshotRows.length > 0) {
         await db('system_health_snapshots').insert(snapshotRows);
       }
     } finally {
       this.isRunning = false;
+    }
+  }
+
+  async buildServerSnapshot(snapshotTime) {
+    try {
+      const [cpu, mem, fs, os] = await Promise.all([
+        si.currentLoad(),
+        si.mem(),
+        si.fsSize(),
+        si.osInfo()
+      ]);
+
+      let dbStatus = 'green';
+      let dbLatency = 0;
+      const start = Date.now();
+      try {
+        await db.raw('SELECT 1');
+        dbLatency = Date.now() - start;
+      } catch (e) {
+        dbStatus = 'red';
+      }
+
+      const mainFs = fs[0] || { use: 0, size: 0, used: 0 };
+      const cpuLoad = cpu.currentLoad;
+      const memUsedPercent = (mem.active / mem.total) * 100;
+      const diskUsedPercent = mainFs.use;
+
+      let status = 'green';
+      if (dbStatus === 'red' || cpuLoad > 95 || memUsedPercent > 95) {
+        status = 'red';
+      } else if (cpuLoad > 80 || memUsedPercent > 80 || diskUsedPercent > 90) {
+        status = 'yellow';
+      }
+
+      return {
+        snapshot_time: snapshotTime,
+        component_type: 'SERVER',
+        component_id: 1,
+        component_name: os.hostname || 'PC-SISTEMA',
+        zone: 'SISTEMAS',
+        parent_plc_id: null,
+        status,
+        is_available: true,
+        communication_state: 'CONNECTED',
+        latency_ms: dbLatency,
+        last_response_at: snapshotTime,
+        timeout_count: 0,
+        error_count: 0,
+        metadata: {
+          cpu_load: cpuLoad.toFixed(2),
+          mem_used_percent: memUsedPercent.toFixed(2),
+          mem_used_gb: (mem.active / 1024 / 1024 / 1024).toFixed(2),
+          mem_total_gb: (mem.total / 1024 / 1024 / 1024).toFixed(2),
+          disk_used_percent: diskUsedPercent.toFixed(2),
+          disk_used_gb: (mainFs.used / 1024 / 1024 / 1024).toFixed(2),
+          disk_total_gb: (mainFs.size / 1024 / 1024 / 1024).toFixed(2),
+          uptime: si.time().uptime,
+          os_platform: os.platform,
+          os_distro: os.distro,
+          db_status: dbStatus,
+          db_latency_ms: dbLatency,
+        }
+      };
+    } catch (error) {
+      console.error('SystemHealthService: error al construir snapshot de servidor:', error.message);
+      return null;
     }
   }
 

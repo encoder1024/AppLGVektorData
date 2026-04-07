@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -15,17 +15,7 @@ import {
   Checkbox,
   ListItemText,
 } from '@mui/material';
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  Brush,
-} from 'recharts';
+import ReactECharts from 'echarts-for-react';
 import { Download as DownloadIcon } from '@mui/icons-material';
 import { saveAs } from 'file-saver';
 import api from '../services/api';
@@ -56,7 +46,6 @@ const Historicos = () => {
   const [eventSensorSeries, setEventSensorSeries] = useState([]);
   const [eventSeriesLoading, setEventSeriesLoading] = useState(false);
   const [selectedEventSensorIds, setSelectedEventSensorIds] = useState([]);
-  const [eventSelectionWarning, setEventSelectionWarning] = useState('');
   const [actuatorActions, setActuatorActions] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -64,48 +53,29 @@ const Historicos = () => {
   const [initialized, setInitialized] = useState(false);
   const [selectedSensorId, setSelectedSensorId] = useState('');
   const [dateRange, setDateRange] = useState(() => getDefaultLastHourRange());
-  const [measurementBrushRange, setMeasurementBrushRange] = useState({ startIndex: 0, endIndex: 0 });
+  const chartRef = useRef(null);
 
   const formatChartTime = (tickItem) => {
     try {
       const date = new Date(tickItem);
-      if (Number.isNaN(date.getTime())) {
-        return tickItem;
-      }
-      return date.toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-      });
+      if (Number.isNaN(date.getTime())) return tickItem;
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     } catch (e) {
-      console.error('Error formatting date for chart:', tickItem, e);
       return tickItem;
     }
   };
 
   const formatLocalDateTime = (value) => {
-    if (!value) {
-      return value;
-    }
-
+    if (!value) return value;
     const date = new Date(value);
-    if (Number.isNaN(date.getTime())) {
-      return value;
-    }
-
+    if (Number.isNaN(date.getTime())) return value;
     return date.toLocaleString();
   };
 
   const toApiDateTime = (value) => {
-    if (!value) {
-      return undefined;
-    }
-
+    if (!value) return undefined;
     const date = new Date(value);
-    if (Number.isNaN(date.getTime())) {
-      return undefined;
-    }
-
+    if (Number.isNaN(date.getTime())) return undefined;
     return date.toISOString();
   };
 
@@ -118,6 +88,15 @@ const Historicos = () => {
     return `${year}-${month}-${day}T${hours}:${minutes}`;
   };
 
+  const applyQuickRange = (hours) => {
+    const end = new Date();
+    const start = new Date(end.getTime() - hours * 60 * 60 * 1000);
+    setDateRange({
+      start: toDateTimeLocalInputValue(start),
+      end: toDateTimeLocalInputValue(end),
+    });
+  };
+
   const buildThresholdEventData = (readings, sensor) => {
     const warningLow = sensor?.warning_low !== null && sensor?.warning_low !== '' ? Number(sensor.warning_low) : null;
     const warningHigh = sensor?.warning_high !== null && sensor?.warning_high !== '' ? Number(sensor.warning_high) : null;
@@ -128,8 +107,6 @@ const Historicos = () => {
       hasAnyThreshold: [warningLow, warningHigh, alertLow, alertHigh].some((value) => value !== null),
       data: readings.map((item) => ({
         time: item.time,
-        localTime: formatChartTime(item.time),
-        localDateTime: formatLocalDateTime(item.time),
         warningLowEvent: warningLow !== null && Number(item.value) <= warningLow ? 1 : 0,
         warningHighEvent: warningHigh !== null && Number(item.value) >= warningHigh ? 1 : 0,
         alertLowEvent: alertLow !== null && Number(item.value) <= alertLow ? 1 : 0,
@@ -139,659 +116,287 @@ const Historicos = () => {
   };
 
   const parseActuatorActionState = (action) => {
-    const details =
-      typeof action?.details === 'string'
-        ? (() => {
-            try {
-              return JSON.parse(action.details);
-            } catch (error) {
-              return {};
-            }
-          })()
-        : action?.details || {};
-
-    const candidateValue = [
-      action?.state,
-      action?.value,
-      details.state,
-      details.value,
-      details.newValue,
-      details.output,
-      details.enabled
-    ].find((value) => value !== undefined && value !== null);
-
-    if (typeof candidateValue === 'boolean') {
-      return candidateValue ? 1 : 0;
-    }
-
-    if (typeof candidateValue === 'number') {
-      return candidateValue !== 0 ? 1 : 0;
-    }
-
+    const details = typeof action?.details === 'string' ? (() => { try { return JSON.parse(action.details); } catch (e) { return {}; } })() : action?.details || {};
+    const candidateValue = [action?.state, action?.value, details.state, details.value, details.newValue, details.output, details.enabled].find((v) => v !== undefined && v !== null);
+    if (typeof candidateValue === 'boolean') return candidateValue ? 1 : 0;
+    if (typeof candidateValue === 'number') return candidateValue !== 0 ? 1 : 0;
     if (typeof candidateValue === 'string') {
-      const normalized = candidateValue.trim().toUpperCase();
-      if (['1', 'TRUE', 'ON', 'OPEN', 'START', 'ENABLE', 'ENABLED', 'HIGH'].includes(normalized)) {
-        return 1;
-      }
-      if (['0', 'FALSE', 'OFF', 'CLOSE', 'STOP', 'DISABLE', 'LOW'].includes(normalized)) {
-        return 0;
-      }
+      const norm = candidateValue.trim().toUpperCase();
+      if (['1', 'TRUE', 'ON', 'OPEN', 'START', 'ENABLE', 'ENABLED', 'HIGH'].includes(norm)) return 1;
+      if (['0', 'FALSE', 'OFF', 'CLOSE', 'STOP', 'DISABLE', 'LOW'].includes(norm)) return 0;
     }
-
     return action?.action_type === 'PULSE' ? 1 : 0;
   };
 
   const fetchSensorMeasurements = async (sensorId, startDate, endDate) => {
-    if (!sensorId) {
-      setSensorMeasurements([]);
-      console.log('Frontend: fetchSensorMeasurements called with no sensorId, clearing data.');
-      return;
-    }
-
-    console.log(
-      `Frontend: Fetching measurements for sensor ${sensorId} with date range ${startDate || 'default'} to ${endDate || 'default'}`
-    );
-
+    if (!sensorId) { setSensorMeasurements([]); return; }
     try {
+      const s = startDate || dateRange.start;
+      const e = endDate || dateRange.end;
+      
+      let shouldDownsample = true;
+      if (s && e) {
+        const diffMs = new Date(e) - new Date(s);
+        const diffHours = diffMs / (1000 * 60 * 60);
+        if (diffHours < 8) shouldDownsample = false;
+      }
+
       const response = await api.get(`/sensors/${sensorId}/readings`, {
-        params: {
-          start: toApiDateTime(startDate || dateRange.start),
-          end: toApiDateTime(endDate || dateRange.end),
+        params: { 
+          start: toApiDateTime(s), 
+          end: toApiDateTime(e), 
+          downsample: shouldDownsample 
         },
       });
-
-      const formattedData = response.data.map((item) => ({
-        time: item.time,
-        localTime: formatChartTime(item.time),
-        localDateTime: formatLocalDateTime(item.time),
-        value: Number.parseFloat(item.value),
-        unit: item.unit || '',
-      }));
-
-      setSensorMeasurements(formattedData);
-      setMeasurementBrushRange({
-        startIndex: 0,
-        endIndex: Math.max(formattedData.length - 1, 0),
-      });
-      console.log('Frontend: Fetched sensor measurements:', formattedData);
+      setSensorMeasurements(response.data.map(item => ({ ...item, value: Number.parseFloat(item.value) })));
     } catch (err) {
-      console.error('Frontend: Error fetching sensor measurements:', err);
-      setError('Error al cargar las mediciones de sensores.');
+      console.error('Error fetching sensor measurements:', err);
+      setError('Error al cargar mediciones.');
     }
   };
 
   const fetchSensorEvents = async (sensorIds = selectedEventSensorIds, sensorList = sensors) => {
-    const limitedSensorIds = (sensorIds || []).slice(0, 5);
-    console.log('Frontend: Fetching sensor threshold events with date range:', dateRange, limitedSensorIds);
+    const limitedIds = (sensorIds || []).slice(0, 5);
+    if (limitedIds.length === 0) { setEventSensorSeries([]); return; }
 
-    if (limitedSensorIds.length === 0) {
-      setEventSensorSeries([]);
-      setSensorEvents([]);
-      return;
+    let shouldDownsample = true;
+    if (dateRange.start && dateRange.end) {
+      const diffMs = new Date(dateRange.end) - new Date(dateRange.start);
+      const diffHours = diffMs / (1000 * 60 * 60);
+      if (diffHours < 8) shouldDownsample = false;
     }
 
     setEventSeriesLoading(true);
-
     try {
-      const responses = await Promise.all(
-        limitedSensorIds.map((sensorId) =>
-          api.get(`/sensors/${sensorId}/readings`, {
-            params: {
-              start: toApiDateTime(dateRange.start),
-              end: toApiDateTime(dateRange.end),
-            },
-          })
-        )
-      );
-
-      const series = limitedSensorIds.map((sensorId, index) => {
-        const sensor = sensorList.find((item) => String(item.id) === String(sensorId));
-        const thresholdData = buildThresholdEventData(responses[index].data || [], sensor);
-
+      const responses = await Promise.all(limitedIds.map(id => api.get(`/sensors/${id}/readings`, {
+        params: { 
+          start: toApiDateTime(dateRange.start), 
+          end: toApiDateTime(dateRange.end), 
+          downsample: shouldDownsample 
+        },
+      })));
+      const series = limitedIds.map((id, index) => {
+        const sensor = sensorList.find(s => String(s.id) === String(id));
         return {
-          sensorId: String(sensorId),
-          tag_name: sensor?.tag_name || `Sensor ${sensorId}`,
+          sensorId: String(id), tag_name: sensor?.tag_name || `Sensor ${id}`,
           plc_nombre: sensor?.plc_nombre || 'N/A',
-          warning_low: sensor?.warning_low,
-          warning_high: sensor?.warning_high,
-          alert_low: sensor?.alert_low,
-          alert_high: sensor?.alert_high,
-          ...thresholdData,
+          warning_low: sensor?.warning_low, warning_high: sensor?.warning_high,
+          alert_low: sensor?.alert_low, alert_high: sensor?.alert_high,
+          ...buildThresholdEventData(responses[index].data || [], sensor),
         };
       });
-
       setEventSensorSeries(series);
-      setSensorEvents(
-        series.flatMap((seriesItem) =>
-          seriesItem.data.map((item) => ({
-            sensor_tag_name: seriesItem.tag_name,
-            plc_nombre: seriesItem.plc_nombre,
-            time: item.localDateTime,
-            warning_low_event: item.warningLowEvent,
-            warning_high_event: item.warningHighEvent,
-            alert_low_event: item.alertLowEvent,
-            alert_high_event: item.alertHighEvent,
-          }))
-        )
-      );
-      console.log('Frontend: Fetched sensor threshold events:', series);
     } catch (err) {
-      console.error('Frontend: Error fetching sensor threshold events:', err);
-      setError('Error al cargar los eventos de sensores.');
-    } finally {
-      setEventSeriesLoading(false);
-    }
+      console.error('Error fetching sensor events:', err);
+    } finally { setEventSeriesLoading(false); }
   };
 
   const fetchActuatorActions = async () => {
-    console.log('Frontend: Fetching actuator actions with date range:', dateRange);
-
     try {
-      const response = await api.get('/actuator-actions', {
-        params: {
-          start: toApiDateTime(dateRange.start),
-          end: toApiDateTime(dateRange.end),
-        },
-      });
-
-      const formattedActions = response.data.map((item) => ({
-        ...item,
-        rawTimestamp: item.timestamp || null,
-        timestamp: item.timestamp ? new Date(item.timestamp).toLocaleString() : 'N/A',
-        localTime: item.timestamp ? formatChartTime(item.timestamp) : 'N/A',
-        localDateTime: item.timestamp ? formatLocalDateTime(item.timestamp) : 'N/A',
-      }));
-
-      setActuatorActions(formattedActions);
-      console.log('Frontend: Fetched actuator actions:', formattedActions);
-    } catch (err) {
-      console.error('Frontend: Error fetching actuator actions:', err);
-      setError('Error al cargar las acciones de actuadores.');
-    }
+      const response = await api.get('/actuator-actions', { params: { start: toApiDateTime(dateRange.start), end: toApiDateTime(dateRange.end) } });
+      setActuatorActions(response.data.map(item => ({ ...item, rawTimestamp: item.timestamp })));
+    } catch (err) { console.error('Error fetching actuator actions:', err); }
   };
 
   const fetchAuditLogs = async () => {
-    console.log('Frontend: Fetching audit logs with date range:', dateRange);
-
     try {
-      const response = await api.get('/audit-logs', {
-        params: {
-          start: toApiDateTime(dateRange.start),
-          end: toApiDateTime(dateRange.end),
-        },
-      });
-
-      const formattedLogs = response.data.map((item) => ({
-        ...item,
-        timestamp: item.time ? new Date(item.time).toLocaleString() : 'N/A',
-        action: item.accion_tipo || 'N/A',
-        component: item.target_id ? `ID ${item.target_id}` : 'Sistema',
-        details: item.descripcion || 'N/A',
-      }));
-
-      setAuditLogs(formattedLogs);
-      console.log('Frontend: Fetched audit logs:', formattedLogs);
-    } catch (err) {
-      console.error('Frontend: Error fetching audit logs:', err);
-      setError('Error al cargar los logs de auditoria.');
-    }
+      const response = await api.get('/audit-logs', { params: { start: toApiDateTime(dateRange.start), end: toApiDateTime(dateRange.end) } });
+      setAuditLogs(response.data.map(item => ({ ...item, timestamp: formatLocalDateTime(item.time) })));
+    } catch (err) { console.error('Error fetching audit logs:', err); }
   };
 
   const fetchData = async () => {
     setLoading(true);
     setError('');
-    console.log('Frontend: fetchData called.');
-
     try {
-      const sensorsResponse = await api.get('/sensors');
-      const allSensors = sensorsResponse.data || [];
-      const firstSensorId = allSensors[0]?.id || '';
-      const initialEventSensorIds = firstSensorId ? [String(firstSensorId)] : [];
-
+      const sensorsRes = await api.get('/sensors');
+      const allSensors = sensorsRes.data || [];
+      const firstId = allSensors[0]?.id || '';
       setSensors(allSensors);
-      setSelectedSensorId(firstSensorId);
-      setSelectedEventSensorIds(initialEventSensorIds);
-      console.log('Frontend: Fetched sensors:', allSensors);
-
-      if (firstSensorId) {
-        await fetchSensorMeasurements(firstSensorId, dateRange.start, dateRange.end);
-      } else {
-        setSensorMeasurements([]);
-        console.log('Frontend: No sensors found, clearing measurements.');
-      }
-
-      await fetchSensorEvents(initialEventSensorIds, allSensors);
+      setSelectedSensorId(firstId);
+      setSelectedEventSensorIds(firstId ? [String(firstId)] : []);
+      if (firstId) await fetchSensorMeasurements(firstId, dateRange.start, dateRange.end);
+      await fetchSensorEvents(firstId ? [String(firstId)] : [], allSensors);
       await fetchActuatorActions();
       await fetchAuditLogs();
-
-      console.log('Frontend: All initial data fetches complete.');
     } catch (err) {
-      console.error('Frontend: Error during initial data fetch:', err);
-      setError('Error al cargar los datos historicos iniciales.');
-    } finally {
-      setInitialized(true);
-      setLoading(false);
-      console.log('Frontend: Loading state set to false.');
-    }
+      setError('Error al cargar datos iniciales.');
+    } finally { setInitialized(true); setLoading(false); }
   };
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  useEffect(() => { fetchData(); }, []);
 
   useEffect(() => {
-    if (!initialized) {
-      return;
-    }
-
-    console.log('Frontend: useEffect triggered. selectedSensorId:', selectedSensorId, 'dateRange:', dateRange);
-
-    if (selectedSensorId) {
-      fetchSensorMeasurements(selectedSensorId, dateRange.start, dateRange.end);
-    } else {
-      setSensorMeasurements([]);
-      console.log('Frontend: No sensor selected, clearing measurements.');
-    }
-
+    if (!initialized) return;
+    if (selectedSensorId) fetchSensorMeasurements(selectedSensorId, dateRange.start, dateRange.end);
     fetchSensorEvents(selectedEventSensorIds);
     fetchActuatorActions();
     fetchAuditLogs();
-    console.log('Frontend: Fetching data for updated filters.');
   }, [initialized, selectedSensorId, dateRange.start, dateRange.end, selectedEventSensorIds]);
 
-  const exportToCSV = (data, filename) => {
-    if (!data || data.length === 0) {
-      alert('No hay datos para exportar.');
-      console.log('Frontend: Export to CSV called, but no data provided.');
-      return;
-    }
+  const handleExportSensors = async () => {
+    if (!selectedSensorId) return;
+    setLoading(true);
+    try {
+      const res = await api.get(`/sensors/${selectedSensorId}/readings`, { params: { start: toApiDateTime(dateRange.start), end: toApiDateTime(dateRange.end), downsample: false } });
+      exportToCSV(res.data, `mediciones_${selectedSensor?.tag_name || 'sensor'}`);
+    } catch (err) { alert('Error al exportar.'); } finally { setLoading(false); }
+  };
 
-    const selectedSensor = sensors.find((sensor) => sensor.id === selectedSensorId);
-    const enrichedData = data.map((row) => {
-      const sensorFromRow = row.sensor_name
-        ? sensors.find((sensor) => sensor.tag_name === row.sensor_name)
-        : selectedSensor;
-
-      return {
-        sensor_tag_name: sensorFromRow?.tag_name || selectedSensor?.tag_name || 'N/A',
-        plc_nombre: sensorFromRow?.plc_nombre || selectedSensor?.plc_nombre || 'N/A',
-        ...Object.fromEntries(
-          Object.entries(row).map(([key, value]) => {
-            if (key === 'time' || key === 'timestamp') {
-              return [key, formatLocalDateTime(value)];
-            }
-            return [key, value];
-          })
-        ),
-      };
-    });
-
-    console.log(`Frontend: Exporting ${data.length} rows to CSV: ${filename}.csv`);
-    const csvRows = [];
-    const headers = Object.keys(enrichedData[0]);
-    csvRows.push(headers.join(','));
-
-    for (const row of enrichedData) {
-      const values = headers.map((header) => {
-        let cellValue = row[header];
-        if (cellValue === null || cellValue === undefined) {
-          cellValue = '';
-        } else if (typeof cellValue === 'object') {
-          cellValue = JSON.stringify(cellValue);
-        } else {
-          cellValue = String(cellValue);
-        }
-
-        const escaped = cellValue.replace(/"/g, '""');
-        return `"${escaped}"`;
+  const handleExportEvents = async () => {
+    if (selectedEventSensorIds.length === 0) return;
+    setLoading(true);
+    try {
+      const limitedIds = selectedEventSensorIds.slice(0, 5);
+      const responses = await Promise.all(limitedIds.map(id => api.get(`/sensors/${id}/readings`, { params: { start: toApiDateTime(dateRange.start), end: toApiDateTime(dateRange.end), downsample: false } })));
+      const allEvents = responses.flatMap((res, index) => {
+        const sId = limitedIds[index];
+        const s = sensors.find(sen => String(sen.id) === String(sId));
+        const tData = buildThresholdEventData(res.data || [], s);
+        return tData.data.map(item => ({
+          tag_name: s?.tag_name, plc: s?.plc_nombre, time: formatLocalDateTime(item.time),
+          wL: item.warningLowEvent, wH: item.warningHighEvent, aL: item.alertLowEvent, aH: item.alertHighEvent
+        }));
       });
+      exportToCSV(allEvents, 'eventos_completos');
+    } catch (err) { alert('Error exportando eventos.'); } finally { setLoading(false); }
+  };
 
-      csvRows.push(values.join(','));
-    }
-
-    const blob = new Blob([csvRows.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  const exportToCSV = (data, filename) => {
+    if (!data || data.length === 0) { alert('No hay datos.'); return; }
+    const headers = Object.keys(data[0]);
+    const csvContent = [headers.join(','), ...data.map(row => headers.map(h => `"${String(row[h]).replace(/"/g, '""')}"`).join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     saveAs(blob, `${filename}.csv`);
-    console.log(`Frontend: File ${filename}.csv exported successfully.`);
   };
 
-  const getYAxisUnit = () => {
-    if (sensorMeasurements.length > 0 && sensorMeasurements[0].unit) {
-      return sensorMeasurements[0].unit;
-    }
-    return 'Valor';
-  };
-
-  const selectedSensor = sensors.find((sensor) => String(sensor.id) === String(selectedSensorId));
-
-  const getMeasurementStatus = (value) => {
-    if (!selectedSensor || value === null || value === undefined) {
-      return 'normal';
-    }
-
-    const alertLow = selectedSensor.alert_low !== null && selectedSensor.alert_low !== '' ? Number(selectedSensor.alert_low) : null;
-    const alertHigh = selectedSensor.alert_high !== null && selectedSensor.alert_high !== '' ? Number(selectedSensor.alert_high) : null;
-    const warningLow = selectedSensor.warning_low !== null && selectedSensor.warning_low !== '' ? Number(selectedSensor.warning_low) : null;
-    const warningHigh = selectedSensor.warning_high !== null && selectedSensor.warning_high !== '' ? Number(selectedSensor.warning_high) : null;
-
-    if ((alertLow !== null && value <= alertLow) || (alertHigh !== null && value >= alertHigh)) {
-      return 'alert';
-    }
-
-    if ((warningLow !== null && value <= warningLow) || (warningHigh !== null && value >= warningHigh)) {
-      return 'warning';
-    }
-
-    return 'normal';
-  };
-
-  const chartData = useMemo(() => {
-    const nextChartData = sensorMeasurements.map((item) => {
-      const status = getMeasurementStatus(item.value);
-      return {
-        ...item,
-        status,
-        normalValue: status === 'normal' ? item.value : null,
-        warningValue: status === 'warning' ? item.value : null,
-        alertValue: status === 'alert' ? item.value : null,
-      };
-    });
-
-    for (let i = 1; i < nextChartData.length; i += 1) {
-      const previousPoint = nextChartData[i - 1];
-      const currentPoint = nextChartData[i];
-
-      if (previousPoint.status === currentPoint.status) {
-        continue;
-      }
-
-      if (previousPoint.status === 'normal') {
-        currentPoint.normalValue = currentPoint.value;
-      } else if (previousPoint.status === 'warning') {
-        currentPoint.warningValue = currentPoint.value;
-      } else if (previousPoint.status === 'alert') {
-        currentPoint.alertValue = currentPoint.value;
-      }
-
-      if (currentPoint.status === 'normal') {
-        previousPoint.normalValue = previousPoint.value;
-      } else if (currentPoint.status === 'warning') {
-        previousPoint.warningValue = previousPoint.value;
-      } else if (currentPoint.status === 'alert') {
-        previousPoint.alertValue = previousPoint.value;
-      }
-    }
-
-    return nextChartData;
-  }, [sensorMeasurements, selectedSensor]);
-
-  const visibleMeasurementRange = useMemo(() => {
-    if (chartData.length === 0) {
-      return { startTime: null, endTime: null, data: [] };
-    }
-
-    const safeStartIndex = Math.max(0, Math.min(measurementBrushRange.startIndex, chartData.length - 1));
-    const safeEndIndex = Math.max(safeStartIndex, Math.min(measurementBrushRange.endIndex, chartData.length - 1));
-    const data = chartData.slice(safeStartIndex, safeEndIndex + 1);
-
-    return {
-      startTime: data[0]?.time || null,
-      endTime: data[data.length - 1]?.time || null,
-      data,
-    };
-  }, [chartData, measurementBrushRange]);
-
-  const filteredEventSensorSeries = useMemo(
-    () =>
-      eventSensorSeries.map((seriesItem) => ({
-        ...seriesItem,
-        data: seriesItem.data.filter((item) => {
-          if (!visibleMeasurementRange.startTime || !visibleMeasurementRange.endTime) {
-            return true;
-          }
-
-          return item.time >= visibleMeasurementRange.startTime && item.time <= visibleMeasurementRange.endTime;
-        }),
-      })),
-    [eventSensorSeries, visibleMeasurementRange]
-  );
+  const selectedSensor = sensors.find(s => String(s.id) === String(selectedSensorId));
 
   const measurementStats = useMemo(() => {
-    if (visibleMeasurementRange.data.length === 0) {
-      return null;
+    if (sensorMeasurements.length === 0) return null;
+    let min = Infinity;
+    let max = -Infinity;
+    let sum = 0;
+    let count = 0;
+
+    for (let i = 0; i < sensorMeasurements.length; i++) {
+      const v = sensorMeasurements[i].value;
+      if (Number.isFinite(v)) {
+        if (v < min) min = v;
+        if (v > max) max = v;
+        sum += v;
+        count++;
+      }
     }
 
-    const values = visibleMeasurementRange.data
-      .map((item) => item.value)
-      .filter((value) => Number.isFinite(value));
+    if (count === 0) return null;
+    return { min, max, avg: sum / count };
+  }, [sensorMeasurements]);
 
-    if (values.length === 0) {
-      return null;
-    }
-
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-    const avg = values.reduce((sum, value) => sum + value, 0) / values.length;
-
-    return { min, max, avg };
-  }, [visibleMeasurementRange]);
-
-  const actuatorWaveChartData = useMemo(() => {
-    if (actuatorActions.length === 0) {
-      return { data: [], actuatorNames: [] };
-    }
-
-    const sortedActions = [...actuatorActions]
-      .filter((action) => action.rawTimestamp && action.actuator_name)
-      .sort((a, b) => new Date(a.rawTimestamp) - new Date(b.rawTimestamp));
-
-    const actuatorNames = [...new Set(sortedActions.map((action) => action.actuator_name).filter(Boolean))];
-
-    if (sortedActions.length === 0 || actuatorNames.length === 0) {
-      return { data: [], actuatorNames: [] };
-    }
-
-    const initialStates = Object.fromEntries(actuatorNames.map((name) => [name, 0]));
-    const points = [];
-    const firstTime = sortedActions[0].rawTimestamp;
-
-    points.push({
-        time: firstTime,
-      localTime: formatChartTime(firstTime),
-      localDateTime: formatLocalDateTime(firstTime),
-      ...initialStates,
+  const actuatorWaveSeries = useMemo(() => {
+    if (actuatorActions.length === 0) return [];
+    const sorted = [...actuatorActions].sort((a, b) => new Date(a.rawTimestamp) - new Date(b.rawTimestamp));
+    const names = [...new Set(sorted.map(a => a.actuator_name).filter(Boolean))];
+    return names.map(name => {
+      const data = sorted.filter(a => a.actuator_name === name).map(a => [a.rawTimestamp, parseActuatorActionState(a)]);
+      return { actuatorName: name, data };
     });
-
-    const currentStates = { ...initialStates };
-
-    sortedActions.forEach((action) => {
-      const actuatorName = action.actuator_name;
-      currentStates[actuatorName] = parseActuatorActionState(action);
-      points.push({
-        time: action.rawTimestamp,
-        localTime: action.localTime || formatChartTime(action.rawTimestamp),
-        localDateTime: action.localDateTime || formatLocalDateTime(action.rawTimestamp),
-        ...currentStates,
-      });
-    });
-
-    return { data: points, actuatorNames };
   }, [actuatorActions]);
 
-  const actuatorWaveSeries = useMemo(
-    () =>
-      actuatorWaveChartData.actuatorNames.map((actuatorName) => ({
-        actuatorName,
-        data: actuatorWaveChartData.data.map((item) => ({
-          time: item.time,
-          localTime: item.localTime,
-          localDateTime: item.localDateTime,
-          state: item[actuatorName] ?? 0,
-        })),
-      })),
-    [actuatorWaveChartData]
-  );
-
   const getOrderedThresholdDefinitions = (sensorLike) => {
-    const thresholds = [
-      {
-        key: 'warningLowEvent',
-        label: 'Warning Bajo',
-        rawValue: sensorLike?.warning_low,
-        color: '#d946ef',
-      },
-      {
-        key: 'warningHighEvent',
-        label: 'Warning Alto',
-        rawValue: sensorLike?.warning_high,
-        color: '#f59e0b',
-      },
-      {
-        key: 'alertLowEvent',
-        label: 'Alerta Baja',
-        rawValue: sensorLike?.alert_low,
-        color: '#1e3a8a',
-      },
-      {
-        key: 'alertHighEvent',
-        label: 'Alerta Alta',
-        rawValue: sensorLike?.alert_high,
-        color: '#dc2626',
-      },
-    ];
-
-    return thresholds
-      .filter((item) => item.rawValue !== null && item.rawValue !== '')
-      .map((item) => ({
-        ...item,
-        numericValue: Number(item.rawValue),
-      }))
-      .sort((a, b) => a.numericValue - b.numericValue);
+    return [
+      { key: 'warningLowEvent', label: 'W. Bajo', val: sensorLike?.warning_low, color: '#d946ef' },
+      { key: 'warningHighEvent', label: 'W. Alto', val: sensorLike?.warning_high, color: '#f59e0b' },
+      { key: 'alertLowEvent', label: 'A. Bajo', val: sensorLike?.alert_low, color: '#1e3a8a' },
+      { key: 'alertHighEvent', label: 'A. Alto', val: sensorLike?.alert_high, color: '#dc2626' },
+    ].filter(t => t.val !== null && t.val !== '').map(t => ({ ...t, nVal: Number(t.val) })).sort((a, b) => a.nVal - b.nVal);
   };
 
-  if (loading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-        <CircularProgress />
-        <Typography sx={{ ml: 2 }}>Cargando datos...</Typography>
-      </Box>
-    );
-  }
+  const getMainChartOption = useMemo(() => {
+    if (sensorMeasurements.length === 0) return {};
+    const data = sensorMeasurements.map(m => [m.time, m.value]);
+    const wL = selectedSensor?.warning_low ? Number(selectedSensor.warning_low) : null;
+    const wH = selectedSensor?.warning_high ? Number(selectedSensor.warning_high) : null;
+    const aL = selectedSensor?.alert_low ? Number(selectedSensor.alert_low) : null;
+    const aH = selectedSensor?.alert_high ? Number(selectedSensor.alert_high) : null;
+    const mAreas = [];
+    if (aL !== null) mAreas.push([{ yAxis: -Infinity, itemStyle: { color: 'rgba(239, 68, 68, 0.1)' } }, { yAxis: aL }]);
+    if (wL !== null && aL !== null && wL > aL) mAreas.push([{ yAxis: aL, itemStyle: { color: 'rgba(245, 158, 11, 0.1)' } }, { yAxis: wL }]);
+    if (wH !== null && aH !== null && aH > wH) mAreas.push([{ yAxis: wH, itemStyle: { color: 'rgba(245, 158, 11, 0.1)' } }, { yAxis: aH }]);
+    if (aH !== null) mAreas.push([{ yAxis: aH, itemStyle: { color: 'rgba(239, 68, 68, 0.1)' } }, { yAxis: Infinity }]);
 
-  if (error) {
-    return (
-      <Box sx={{ p: 3 }}>
-        <Alert severity="error">{error}</Alert>
-      </Box>
-    );
-  }
+    return {
+      tooltip: { trigger: 'axis' },
+      grid: { left: '3%', right: '4%', bottom: '15%', containLabel: true },
+      xAxis: { type: 'time', axisLine: { lineStyle: { color: '#64748b' } } },
+      yAxis: { type: 'value', name: selectedSensor?.unidad_medida || 'Valor' },
+      dataZoom: [{ type: 'inside' }, { type: 'slider', bottom: 10, height: 20 }],
+      series: [{
+        name: 'Lectura', type: 'line', smooth: true, symbol: 'none', data,
+        lineStyle: { width: 2, color: '#2563eb' },
+        markArea: { silent: true, data: mAreas },
+        markLine: {
+          silent: true, symbol: 'none',
+          data: [
+            ...(wL !== null ? [{ yAxis: wL, lineStyle: { color: '#f59e0b', type: 'dashed' } }] : []),
+            ...(wH !== null ? [{ yAxis: wH, lineStyle: { color: '#f59e0b', type: 'dashed' } }] : []),
+            ...(aL !== null ? [{ yAxis: aL, lineStyle: { color: '#ef4444' } }] : []),
+            ...(aH !== null ? [{ yAxis: aH, lineStyle: { color: '#ef4444' } }] : [])
+          ]
+        }
+      }]
+    };
+  }, [sensorMeasurements, selectedSensor]);
 
-  const handleEventSensorSelectionChange = (event) => {
-    const nextIds = event.target.value.slice(0, 5);
-    setSelectedEventSensorIds(nextIds);
-    setEventSelectionWarning(
-      event.target.value.length > 5 ? 'Solo se pueden visualizar hasta 5 sensores al mismo tiempo.' : ''
-    );
+  const getEventChartOption = (s) => {
+    const thresholds = getOrderedThresholdDefinitions(s);
+    return {
+      tooltip: { trigger: 'axis' },
+      grid: { left: '3%', right: '4%', bottom: '15%', containLabel: true },
+      xAxis: { type: 'time' },
+      yAxis: { min: 0, max: 1, interval: 1 },
+      series: thresholds.map(t => ({ name: t.label, type: 'line', step: 'end', symbol: 'none', data: s.data.map(d => [d.time, d[t.key]]), lineStyle: { color: t.color } }))
+    };
   };
 
-  const handleMeasurementBrushChange = (range) => {
-    if (!range || range.startIndex === undefined || range.endIndex === undefined) {
-      return;
-    }
-
-    setMeasurementBrushRange({
-      startIndex: range.startIndex,
-      endIndex: range.endIndex,
-    });
+  const getActuatorChartOption = (s, i) => {
+    const color = ['#2563eb', '#dc2626', '#f59e0b', '#10b981', '#7c3aed', '#0891b2'][i % 6];
+    return {
+      tooltip: { trigger: 'axis' },
+      grid: { left: '3%', right: '4%', bottom: '15%', containLabel: true },
+      xAxis: { type: 'time' },
+      yAxis: { min: 0, max: 1, interval: 1 },
+      series: [{ name: s.actuatorName, type: 'line', step: 'end', symbol: 'none', data: s.data, lineStyle: { color }, areaStyle: { color, opacity: 0.1 } }]
+    };
   };
 
-  const applyQuickRange = (hours) => {
-    const end = new Date();
-    const start = new Date(end.getTime() - hours * 60 * 60 * 1000);
-
-    setDateRange({
-      start: toDateTimeLocalInputValue(start),
-      end: toDateTimeLocalInputValue(end),
-    });
-  };
+  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><CircularProgress /><Typography sx={{ ml: 2 }}>Cargando...</Typography></Box>;
+  if (error) return <Box sx={{ p: 3 }}><Alert severity="error">{error}</Alert></Box>;
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" sx={{ mb: 4, fontWeight: 'bold', color: '#1e293b' }}>
-        Historicos y Auditoria
-      </Typography>
+      <Typography variant="h4" sx={{ mb: 4, fontWeight: 'bold', color: '#1e293b' }}>Historicos y Auditoria</Typography>
 
       <Paper elevation={3} sx={{ p: 3, mb: 4, borderRadius: 2 }}>
-        <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold' }}>
-          Filtros
-        </Typography>
+        <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold' }}>Filtros</Typography>
         <Grid container spacing={2} alignItems="center">
-          <Grid item xs={12} sm={6} md={3}>
+          <Grid item xs={12} sm={3}>
             <FormControl fullWidth size="small">
-              <InputLabel id="sensor-select-label">Sensor</InputLabel>
-              <Select
-                labelId="sensor-select-label"
-                id="sensor-select"
-                value={selectedSensorId || ''}
-                label="Sensor"
-                onChange={(e) => {
-                  setSelectedSensorId(e.target.value);
-                  console.log('Frontend: Sensor selected in filter:', e.target.value);
-                }}
-              >
-                <MenuItem value="">Todos los Sensores</MenuItem>
-                {sensors.map((sensor) => (
-                  <MenuItem key={sensor.id} value={sensor.id}>
-                    {sensor.tag_name}{sensor.activo ? '' : ' (OFF)'}
-                  </MenuItem>
-                ))}
+              <InputLabel>Sensor</InputLabel>
+              <Select value={selectedSensorId || ''} label="Sensor" onChange={(e) => setSelectedSensorId(e.target.value)}>
+                {sensors.map(s => <MenuItem key={s.id} value={s.id}>{s.tag_name}</MenuItem>)}
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <TextField
-              label="Fecha Inicio"
-              type="datetime-local"
-              fullWidth
-              size="small"
-              InputLabelProps={{ shrink: true }}
-              value={dateRange.start}
-              onChange={(e) => {
-                setDateRange({ ...dateRange, start: e.target.value });
-                console.log('Frontend: Date range start changed:', e.target.value);
-              }}
-            />
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <TextField
-              label="Fecha Fin"
-              type="datetime-local"
-              fullWidth
-              size="small"
-              InputLabelProps={{ shrink: true }}
-              value={dateRange.end}
-              onChange={(e) => {
-                setDateRange({ ...dateRange, end: e.target.value });
-                console.log('Frontend: Date range end changed:', e.target.value);
-              }}
-            />
-          </Grid>
-          <Grid item xs={12} sm={6} md={1} />
-          <Grid item xs={12} sm={6} md={1} />
-          <Grid item xs={12}>
+          <Grid item xs={12} sm={3}><TextField label="Inicio" type="datetime-local" fullWidth size="small" InputLabelProps={{ shrink: true }} value={dateRange.start} onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })} /></Grid>
+          <Grid item xs={12} sm={3}><TextField label="Fin" type="datetime-local" fullWidth size="small" InputLabelProps={{ shrink: true }} value={dateRange.end} onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })} /></Grid>
+          <Grid item xs={12} sm={6}>
             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-              <Typography variant="caption" color="textSecondary" sx={{ alignSelf: 'center', mr: 1 }}>
-                Rangos rapidos:
-              </Typography>
-              <MenuItem sx={{ borderRadius: 1 }} onClick={() => applyQuickRange(1)}>1h</MenuItem>
-              <MenuItem sx={{ borderRadius: 1 }} onClick={() => applyQuickRange(8)}>8h</MenuItem>
-              <MenuItem sx={{ borderRadius: 1 }} onClick={() => applyQuickRange(24)}>24h</MenuItem>
-              <MenuItem sx={{ borderRadius: 1 }} onClick={() => applyQuickRange(24 * 7)}>7d</MenuItem>
-              <MenuItem
-                sx={{ borderRadius: 1 }}
-                onClick={() => setDateRange({ start: '', end: '' })}
-              >
-                Limpiar
-              </MenuItem>
+              <MenuItem sx={{ borderRadius: 1, border: '1px solid #e2e8f0' }} onClick={() => applyQuickRange(1)}>1h</MenuItem>
+              <MenuItem sx={{ borderRadius: 1, border: '1px solid #e2e8f0' }} onClick={() => applyQuickRange(8)}>8h</MenuItem>
+              <MenuItem sx={{ borderRadius: 1, border: '1px solid #e2e8f0' }} onClick={() => applyQuickRange(24)}>24h</MenuItem>
+              <MenuItem sx={{ borderRadius: 1, border: '1px solid #e2e8f0' }} onClick={() => applyQuickRange(168)}>7d</MenuItem>
+              <MenuItem sx={{ borderRadius: 1, border: '1px solid #ef4444', color: '#ef4444' }} onClick={() => setDateRange({ start: '', end: '' })}>Limpiar</MenuItem>
             </Box>
           </Grid>
         </Grid>
@@ -799,339 +404,82 @@ const Historicos = () => {
 
       <Paper elevation={3} sx={{ p: 3, mb: 4, borderRadius: 2 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
-            Mediciones de Sensores
-            {selectedSensorId && selectedSensor && (
-              <Typography variant="caption" color="textSecondary" sx={{ ml: 1 }}>
-                ({selectedSensor?.tag_name} - {selectedSensor?.unidad_medida || ''})
-              </Typography>
-            )}
-          </Typography>
-          <IconButton
-            onClick={() => exportToCSV(sensorMeasurements, 'mediciones_sensores')}
-            disabled={sensorMeasurements.length === 0}
-          >
-            <DownloadIcon /> Descargar CSV
-          </IconButton>
+          <Typography variant="h6" sx={{ fontWeight: 'bold' }}>Mediciones {selectedSensor?.tag_name} {selectedSensor?.unidad_medida && `(${selectedSensor.unidad_medida})`}</Typography>
+          <IconButton onClick={handleExportSensors} disabled={sensorMeasurements.length === 0}><DownloadIcon /></IconButton>
         </Box>
-        <Box sx={{ height: 400 }}>
-          {sensorMeasurements.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 70 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis
-                  dataKey="localTime"
-                  stroke="#64748b"
-                  angle={-45}
-                  textAnchor="end"
-                  interval="preserveStartEnd"
-                  height={80}
-                />
-                <YAxis
-                  stroke="#64748b"
-                  label={{
-                    value: getYAxisUnit(),
-                    angle: -90,
-                    position: 'insideLeft',
-                    fill: '#64748b',
-                  }}
-                />
-                <Tooltip
-                  formatter={(value, name, props) => {
-                    const dataItem = props.payload;
-                    const unit = dataItem ? dataItem.unit : '';
-                    return `${Number(value).toFixed(2)} ${unit}`;
-                  }}
-                  labelFormatter={(label, payload) => payload?.[0]?.payload?.localDateTime || label}
-                />
-                <Legend verticalAlign="top" wrapperStyle={{ paddingBottom: 12 }} />
-                <Line
-                  type="monotone"
-                  dataKey="normalValue"
-                  stroke="#10b981"
-                  activeDot={{ r: 5 }}
-                  dot={false}
-                  strokeWidth={2}
-                  name="Normal"
-                  connectNulls={false}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="warningValue"
-                  stroke="#f59e0b"
-                  activeDot={{ r: 5 }}
-                  dot={false}
-                  strokeWidth={2}
-                  name="Warning"
-                  connectNulls={false}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="alertValue"
-                  stroke="#ef4444"
-                  activeDot={{ r: 5 }}
-                  dot={false}
-                  strokeWidth={2}
-                  name="Alerta"
-                  connectNulls={false}
-                />
-                <Brush
-                  dataKey="localTime"
-                  height={24}
-                  stroke="#64748b"
-                  travellerWidth={10}
-                  onChange={handleMeasurementBrushChange}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          ) : (
-            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-              <Typography color="textSecondary">
-                Selecciona un sensor y un rango de fechas para ver las mediciones.
-              </Typography>
-            </Box>
-          )}
+        <Box sx={{ height: 450 }}>
+          {sensorMeasurements.length > 0 ? <ReactECharts ref={chartRef} option={getMainChartOption} style={{ height: '100%' }} notMerge={true} /> : <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}><Typography color="textSecondary">Selecciona un sensor para ver mediciones.</Typography></Box>}
         </Box>
         {measurementStats && (
           <Grid container spacing={2} sx={{ mt: 2 }}>
-            <Grid item xs={12} sm={4}>
-              <Paper variant="outlined" sx={{ p: 2, textAlign: 'center', backgroundColor: '#f8fafc' }}>
-                <Typography variant="caption" color="textSecondary">Minimo</Typography>
-                <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#0f172a' }}>
-                  {measurementStats.min.toFixed(2)} {getYAxisUnit()}
-                </Typography>
-              </Paper>
-            </Grid>
-            <Grid item xs={12} sm={4}>
-              <Paper variant="outlined" sx={{ p: 2, textAlign: 'center', backgroundColor: '#f8fafc' }}>
-                <Typography variant="caption" color="textSecondary">Maximo</Typography>
-                <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#0f172a' }}>
-                  {measurementStats.max.toFixed(2)} {getYAxisUnit()}
-                </Typography>
-              </Paper>
-            </Grid>
-            <Grid item xs={12} sm={4}>
-              <Paper variant="outlined" sx={{ p: 2, textAlign: 'center', backgroundColor: '#f8fafc' }}>
-                <Typography variant="caption" color="textSecondary">Promedio</Typography>
-                <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#0f172a' }}>
-                  {measurementStats.avg.toFixed(2)} {getYAxisUnit()}
-                </Typography>
-              </Paper>
-            </Grid>
+            <Grid item xs={12} sm={4}><Paper variant="outlined" sx={{ p: 2, textAlign: 'center', backgroundColor: '#f8fafc' }}><Typography variant="caption" color="textSecondary">Minimo</Typography><Typography variant="h6" sx={{ fontWeight: 'bold' }}>{measurementStats.min.toFixed(2)}</Typography></Paper></Grid>
+            <Grid item xs={12} sm={4}><Paper variant="outlined" sx={{ p: 2, textAlign: 'center', backgroundColor: '#f8fafc' }}><Typography variant="caption" color="textSecondary">Maximo</Typography><Typography variant="h6" sx={{ fontWeight: 'bold' }}>{measurementStats.max.toFixed(2)}</Typography></Paper></Grid>
+            <Grid item xs={12} sm={4}><Paper variant="outlined" sx={{ p: 2, textAlign: 'center', backgroundColor: '#f8fafc' }}><Typography variant="caption" color="textSecondary">Promedio</Typography><Typography variant="h6" sx={{ fontWeight: 'bold' }}>{measurementStats.avg.toFixed(2)}</Typography></Paper></Grid>
           </Grid>
         )}
       </Paper>
 
       <Paper elevation={3} sx={{ p: 3, mb: 4, borderRadius: 2 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
-            Eventos de Sensores
-          </Typography>
-          <IconButton onClick={() => exportToCSV(sensorEvents, 'eventos_sensores')} disabled={sensorEvents.length === 0}>
-            <DownloadIcon /> Descargar CSV
-          </IconButton>
+          <Typography variant="h6" sx={{ fontWeight: 'bold' }}>Eventos</Typography>
+          <IconButton onClick={handleExportEvents} disabled={eventSensorSeries.length === 0}><DownloadIcon /></IconButton>
         </Box>
-        <Grid container spacing={2} sx={{ mb: 2 }}>
-          <Grid item xs={12} md={6}>
-            <FormControl fullWidth size="small">
-              <InputLabel id="event-sensor-select-label">Sensores para eventos</InputLabel>
-              <Select
-                labelId="event-sensor-select-label"
-                multiple
-                value={selectedEventSensorIds}
-                label="Sensores para eventos"
-                onChange={handleEventSensorSelectionChange}
-                renderValue={(selected) =>
-                  selected
-                    .map((sensorId) => sensors.find((sensor) => String(sensor.id) === String(sensorId))?.tag_name || sensorId)
-                    .join(', ')
-                }
-              >
-                {sensors.map((sensor) => (
-                  <MenuItem key={sensor.id} value={String(sensor.id)}>
-                    <Checkbox checked={selectedEventSensorIds.includes(String(sensor.id))} />
-                    <ListItemText primary={`${sensor.tag_name}${sensor.activo ? '' : ' (OFF)'}`} />
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-        </Grid>
-        {eventSelectionWarning && <Alert severity="warning" sx={{ mb: 2 }}>{eventSelectionWarning}</Alert>}
-        <Box sx={{ maxHeight: 700, overflowY: 'auto', pr: 1 }}>
-          {eventSeriesLoading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-              <CircularProgress size={28} />
-            </Box>
-          ) : filteredEventSensorSeries.length > 0 ? (
-            filteredEventSensorSeries.map((seriesItem) => (
-              <Paper key={seriesItem.sensorId} variant="outlined" sx={{ p: 2, mb: 2, backgroundColor: '#f8fafc' }}>
-                {(() => {
-                  const orderedThresholds = getOrderedThresholdDefinitions(seriesItem);
-                  return (
-                    <>
-                <Typography variant="subtitle2" sx={{ fontWeight: 'bold', color: '#0f172a', mb: 0.5 }}>
-                  {seriesItem.tag_name}
-                </Typography>
-                <Typography variant="caption" color="textSecondary">
-                  {seriesItem.plc_nombre}
-                </Typography>
-                {seriesItem.hasAnyThreshold ? (
-                  <Box sx={{ mt: 1 }}>
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 1 }}>
-                      {orderedThresholds.map((threshold) => (
-                        <Typography key={threshold.key} variant="caption" sx={{ color: threshold.color, fontWeight: 'bold' }}>
-                          {threshold.label} ({threshold.rawValue})
-                        </Typography>
-                      ))}
-                    </Box>
-                    <Box sx={{ height: 190 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={seriesItem.data} margin={{ top: 5, right: 30, left: 20, bottom: 55 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                        <XAxis
-                          dataKey="localTime"
-                          stroke="#64748b"
-                          angle={-45}
-                          textAnchor="end"
-                          interval="preserveStartEnd"
-                          height={70}
-                        />
-                        <YAxis stroke="#64748b" domain={[0, 1]} ticks={[0, 1]} allowDecimals={false} />
-                        <Tooltip
-                          formatter={(value) => (Number(value) === 1 ? 'Activo' : 'Inactivo')}
-                          labelFormatter={(label, payload) => payload?.[0]?.payload?.localDateTime || label}
-                        />
-                        {orderedThresholds.map((threshold) => (
-                          <Line
-                            key={threshold.key}
-                            type="stepAfter"
-                            dataKey={threshold.key}
-                            stroke={threshold.color}
-                            dot={false}
-                            strokeWidth={2}
-                            name={`${threshold.label} (${threshold.rawValue})`}
-                          />
-                        ))}
-                      </LineChart>
-                    </ResponsiveContainer>
-                    </Box>
-                  </Box>
-                ) : (
-                  <Typography color="textSecondary" sx={{ mt: 1 }}>
-                    Este sensor no tiene umbrales de warning o alerta configurados.
-                  </Typography>
-                )}
-                {seriesItem.hasAnyThreshold && seriesItem.data.length === 0 && (
-                  <Typography color="textSecondary" sx={{ mt: 1 }}>
-                    Sin eventos visibles dentro del rango seleccionado en la grafica principal.
-                  </Typography>
-                )}
-                    </>
-                  );
-                })()}
+        <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+          <InputLabel>Sensores</InputLabel>
+          <Select multiple value={selectedEventSensorIds} label="Sensores" onChange={(e) => setSelectedEventSensorIds(e.target.value.slice(0, 5))} renderValue={(s) => s.join(', ')}>
+            {sensors.map(s => <MenuItem key={s.id} value={String(s.tag_name)}>{s.tag_name}</MenuItem>)}
+          </Select>
+        </FormControl>
+        <Box sx={{ maxHeight: 600, overflowY: 'auto', pr: 1 }}>
+          {eventSeriesLoading ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={28} /></Box> : 
+            eventSensorSeries.map(s => (
+              <Paper key={s.sensorId} variant="outlined" sx={{ p: 2, mb: 2, backgroundColor: '#f8fafc' }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>{s.tag_name}</Typography>
+                <Typography variant="caption" color="textSecondary" sx={{ mb: 1, display: 'block' }}>{s.plc_nombre}</Typography>
+                {s.hasAnyThreshold ? (
+                  <Box sx={{ mt: 1, height: 220 }}><ReactECharts option={getEventChartOption(s)} style={{ height: '100%', width: '100%' }} /></Box>
+                ) : (<Typography color="textSecondary" sx={{ mt: 1 }}>Sin umbrales configurados.</Typography>)}
               </Paper>
-            ))
-          ) : (
-            <Typography color="textSecondary">Selecciona hasta 5 sensores para ver sus eventos de umbral.</Typography>
-          )}
+            ))}
         </Box>
       </Paper>
 
       <Paper elevation={3} sx={{ p: 3, mb: 4, borderRadius: 2 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
-            Acciones de Actuadores
-          </Typography>
-          <IconButton
-            onClick={() => exportToCSV(actuatorActions, 'acciones_actuadores')}
-            disabled={actuatorActions.length === 0}
-          >
-            <DownloadIcon /> Descargar CSV
-          </IconButton>
-        </Box>
-        <Box sx={{ maxHeight: 520, overflowY: 'auto', pr: 1 }}>
-          {actuatorWaveSeries.length > 0 ? (
-            actuatorWaveSeries.map((seriesItem, index) => (
-              <Paper key={seriesItem.actuatorName} variant="outlined" sx={{ p: 2, mb: 2, backgroundColor: '#f8fafc' }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 'bold', color: '#0f172a', mb: 1 }}>
-                  {seriesItem.actuatorName}
-                </Typography>
-                <Box sx={{ height: 150 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={seriesItem.data} margin={{ top: 5, right: 30, left: 20, bottom: 55 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                      <XAxis
-                        dataKey="localTime"
-                        stroke="#64748b"
-                        angle={-45}
-                        textAnchor="end"
-                        interval="preserveStartEnd"
-                        height={70}
-                      />
-                      <YAxis stroke="#64748b" domain={[0, 1]} ticks={[0, 1]} allowDecimals={false} />
-                      <Tooltip
-                        formatter={(value) => (Number(value) === 1 ? 'ON' : 'OFF')}
-                        labelFormatter={(label, payload) => payload?.[0]?.payload?.localDateTime || label}
-                      />
-                      <Line
-                        type="stepAfter"
-                        dataKey="state"
-                        stroke={['#2563eb', '#dc2626', '#f59e0b', '#10b981', '#7c3aed', '#0891b2'][index % 6]}
-                        dot={false}
-                        strokeWidth={2}
-                        name={seriesItem.actuatorName}
-                        connectNulls={false}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </Box>
+        <Typography variant="h6" sx={{ mb: 3, fontWeight: 'bold' }}>Actuadores</Typography>
+        <Box sx={{ maxHeight: 500, overflowY: 'auto', pr: 1 }}>
+          {actuatorWaveSeries.length > 0 ? 
+            actuatorWaveSeries.map((s, i) => (
+              <Paper key={s.actuatorName} variant="outlined" sx={{ p: 2, mb: 2, backgroundColor: '#f8fafc' }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>{s.actuatorName}</Typography>
+                <Box sx={{ height: 180 }}><ReactECharts option={getActuatorChartOption(s, i)} style={{ height: '100%', width: '100%' }} /></Box>
               </Paper>
-            ))
-          ) : (
-            <Typography color="textSecondary">
-              No hay acciones de actuadores registradas para el periodo seleccionado.
-            </Typography>
-          )}
+            )) : (<Typography color="textSecondary">Sin acciones registradas.</Typography>)}
         </Box>
       </Paper>
 
-      <Paper elevation={3} sx={{ p: 3, mb: 4, borderRadius: 2 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
-            Logs de Auditoria
-          </Typography>
-          <IconButton onClick={() => exportToCSV(auditLogs, 'audit_logs')} disabled={auditLogs.length === 0}>
-            <DownloadIcon /> Descargar CSV
-          </IconButton>
-        </Box>
-        <Box sx={{ height: 300, overflowY: 'auto' }}>
-          {auditLogs.length > 0 ? (
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  <th style={{ border: '1px solid #e2e8f0', padding: '8px', textAlign: 'left', backgroundColor: '#f8fafc' }}>Timestamp</th>
-                  <th style={{ border: '1px solid #e2e8f0', padding: '8px', textAlign: 'left', backgroundColor: '#f8fafc' }}>Usuario</th>
-                  <th style={{ border: '1px solid #e2e8f0', padding: '8px', textAlign: 'left', backgroundColor: '#f8fafc' }}>Accion</th>
-                  <th style={{ border: '1px solid #e2e8f0', padding: '8px', textAlign: 'left', backgroundColor: '#f8fafc' }}>Componente</th>
-                  <th style={{ border: '1px solid #e2e8f0', padding: '8px', textAlign: 'left', backgroundColor: '#f8fafc' }}>Detalles</th>
+      <Paper elevation={3} sx={{ p: 3, borderRadius: 2 }}>
+        <Typography variant="h6" sx={{ mb: 3, fontWeight: 'bold' }}>Auditoria</Typography>
+        <Box sx={{ height: 350, overflowY: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead style={{ position: 'sticky', top: 0, backgroundColor: '#f8fafc', zIndex: 1 }}>
+              <tr>
+                <th style={{ border: '1px solid #e2e8f0', padding: '12px', textAlign: 'left' }}>Timestamp</th>
+                <th style={{ border: '1px solid #e2e8f0', padding: '12px', textAlign: 'left' }}>Usuario</th>
+                <th style={{ border: '1px solid #e2e8f0', padding: '12px', textAlign: 'left' }}>Accion</th>
+                <th style={{ border: '1px solid #e2e8f0', padding: '12px', textAlign: 'left' }}>Detalles</th>
+              </tr>
+            </thead>
+            <tbody>
+              {auditLogs.map((log, i) => (
+                <tr key={i}>
+                  <td style={{ border: '1px solid #e2e8f0', padding: '12px' }}>{log.timestamp}</td>
+                  <td style={{ border: '1px solid #e2e8f0', padding: '12px' }}>{log.user_name || 'Sistema'}</td>
+                  <td style={{ border: '1px solid #e2e8f0', padding: '12px' }}>{log.action}</td>
+                  <td style={{ border: '1px solid #e2e8f0', padding: '12px' }}>{log.details}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {auditLogs.map((log, index) => (
-                  <tr key={index}>
-                    <td style={{ border: '1px solid #e2e8f0', padding: '8px' }}>{log.timestamp}</td>
-                    <td style={{ border: '1px solid #e2e8f0', padding: '8px' }}>{log.user_name || log.user_id || 'N/A'}</td>
-                    <td style={{ border: '1px solid #e2e8f0', padding: '8px' }}>{log.action || 'N/A'}</td>
-                    <td style={{ border: '1px solid #e2e8f0', padding: '8px' }}>{log.component || 'N/A'}</td>
-                    <td style={{ border: '1px solid #e2e8f0', padding: '8px' }}>{log.details || 'N/A'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <Typography color="textSecondary">No hay logs de auditoria registrados para el periodo seleccionado.</Typography>
-          )}
+              ))}
+            </tbody>
+          </table>
         </Box>
       </Paper>
     </Box>

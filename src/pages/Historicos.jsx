@@ -138,7 +138,7 @@ const Historicos = () => {
       if (s && e) {
         const diffMs = new Date(e) - new Date(s);
         const diffHours = diffMs / (1000 * 60 * 60);
-        if (diffHours < 8) shouldDownsample = false;
+        if (diffHours < 2) shouldDownsample = false; // Downsample mas agresivo: promediar a partir de 2 horas
       }
 
       const response = await api.get(`/sensors/${sensorId}/readings`, {
@@ -148,11 +148,97 @@ const Historicos = () => {
           downsample: shouldDownsample 
         },
       });
-      setSensorMeasurements(response.data.map(item => ({ ...item, value: Number.parseFloat(item.value) })));
+
+      const rawData = response.data.map(item => ({ ...item, value: Number.parseFloat(item.value) }));
+      setSensorMeasurements(rawData);
     } catch (err) {
       console.error('Error fetching sensor measurements:', err);
       setError('Error al cargar mediciones.');
     }
+  };
+
+  const fillDataGaps = (readings, startDate, endDate, shouldDownsample) => {
+    if (!readings || readings.length === 0) return [];
+
+    // 1. Determinar intervalo esperado entre puntos
+    let intervalMs = 1000;
+    if (shouldDownsample && startDate && endDate) {
+      const diffMs = new Date(endDate) - new Date(startDate);
+      const totalSeconds = diffMs / 1000;
+      const bucketSeconds = Math.max(1, Math.ceil(totalSeconds / 1000)); // Apuntamos a ~1000 puntos
+      intervalMs = bucketSeconds * 1000;
+    } else if (readings.length > 1) {
+      const diffs = [];
+      for (let i = 1; i < Math.min(readings.length, 20); i++) {
+        const d = new Date(readings[i].time) - new Date(readings[i - 1].time);
+        if (d > 0) diffs.push(d);
+      }
+      if (diffs.length > 0) {
+        diffs.sort((a, b) => a - b);
+        intervalMs = diffs[Math.floor(diffs.length / 2)];
+      }
+    }
+
+    // Definimos un umbral de 3 veces el intervalo para considerar que hay un "hueco"
+    const threshold = Math.max(intervalMs * 3, 5000); 
+    const result = [];
+
+    for (let i = 0; i < readings.length; i++) {
+      const current = readings[i];
+      const currentTime = new Date(current.time).getTime();
+
+      if (i > 0) {
+        const prev = readings[i - 1];
+        const prevTime = new Date(prev.time).getTime();
+        const diff = currentTime - prevTime;
+
+        if (diff > threshold) {
+          // Insertamos ceros para que la curva caiga y se mantenga en cero durante el gap
+          result.push({
+            ...current,
+            time: new Date(prevTime + intervalMs).toISOString(),
+            value: 0,
+            isGap: true,
+          });
+          result.push({
+            ...current,
+            time: new Date(currentTime - intervalMs).toISOString(),
+            value: 0,
+            isGap: true,
+          });
+        }
+      }
+      result.push(current);
+    }
+    return result;
+  };
+
+  const bucketizeData = (data, targetPoints = 1000) => {
+    if (!data || data.length <= targetPoints) return data;
+
+    const first = new Date(data[0].time).getTime();
+    const last = new Date(data[data.length - 1].time).getTime();
+    const interval = (last - first) / targetPoints;
+    
+    const buckets = new Map();
+    
+    data.forEach(item => {
+      const t = new Date(item.time).getTime();
+      const bucketIdx = Math.floor((t - first) / interval);
+      const bucketTime = first + bucketIdx * interval;
+      
+      if (!buckets.has(bucketTime)) {
+        buckets.set(bucketTime, { sum: 0, count: 0, ...item, time: new Date(bucketTime).toISOString() });
+      }
+      const b = buckets.get(bucketTime);
+      b.sum += item.value;
+      b.count += 1;
+    });
+
+    return Array.from(buckets.values()).map(b => ({
+      ...b,
+      value: b.sum / b.count
+    })).sort((a, b) => new Date(a.time) - new Date(b.time));
   };
 
   const fetchSensorEvents = async (sensorIds = selectedEventSensorIds, sensorList = sensors) => {
@@ -177,12 +263,15 @@ const Historicos = () => {
       })));
       const series = limitedIds.map((id, index) => {
         const sensor = sensorList.find(s => String(s.id) === String(id));
+        const rawReadings = (responses[index].data || []).map(r => ({ ...r, value: Number(r.value) }));
+        const filledReadings = fillDataGaps(rawReadings, dateRange.start, dateRange.end, shouldDownsample);
+        
         return {
           sensorId: String(id), tag_name: sensor?.tag_name || `Sensor ${id}`,
           plc_nombre: sensor?.plc_nombre || 'N/A',
           warning_low: sensor?.warning_low, warning_high: sensor?.warning_high,
           alert_low: sensor?.alert_low, alert_high: sensor?.alert_high,
-          ...buildThresholdEventData(responses[index].data || [], sensor),
+          ...buildThresholdEventData(filledReadings, sensor),
         };
       });
       setEventSensorSeries(series);
@@ -280,7 +369,10 @@ const Historicos = () => {
     let count = 0;
 
     for (let i = 0; i < sensorMeasurements.length; i++) {
-      const v = sensorMeasurements[i].value;
+      const m = sensorMeasurements[i];
+      if (m.isGap) continue; // Ignorar puntos de relleno para las estadisticas reales
+      
+      const v = m.value;
       if (Number.isFinite(v)) {
         if (v < min) min = v;
         if (v > max) max = v;
@@ -314,7 +406,15 @@ const Historicos = () => {
 
   const getMainChartOption = useMemo(() => {
     if (sensorMeasurements.length === 0) return {};
-    const data = sensorMeasurements.map(m => [m.time, m.value]);
+    
+    // 1. Bucketizado manual para limpiar ruido vertical y asegurar un solo punto por slot de tiempo
+    const cleanData = bucketizeData(sensorMeasurements, 1000);
+    
+    // 2. Aplicar relleno de huecos para que caiga a cero cuando no hay datos
+    const shouldDownsample = sensorMeasurements.length > 500; 
+    const processedReadings = fillDataGaps(cleanData, dateRange.start, dateRange.end, shouldDownsample);
+    
+    const data = processedReadings.map(m => [m.time, m.value]);
     const wL = selectedSensor?.warning_low ? Number(selectedSensor.warning_low) : null;
     const wH = selectedSensor?.warning_high ? Number(selectedSensor.warning_high) : null;
     const aL = selectedSensor?.alert_low ? Number(selectedSensor.alert_low) : null;
@@ -322,17 +422,36 @@ const Historicos = () => {
     const mAreas = [];
     if (aL !== null) mAreas.push([{ yAxis: -Infinity, itemStyle: { color: 'rgba(239, 68, 68, 0.1)' } }, { yAxis: aL }]);
     if (wL !== null && aL !== null && wL > aL) mAreas.push([{ yAxis: aL, itemStyle: { color: 'rgba(245, 158, 11, 0.1)' } }, { yAxis: wL }]);
-    if (wH !== null && aH !== null && aH > wH) mAreas.push([{ yAxis: wH, itemStyle: { color: 'rgba(245, 158, 11, 0.1)' } }, { yAxis: aH }]);
+    if (wH !== null && aH !== null && aH > wH) mAreas.push([{ yAxis: wH, itemStyle: { color: 'rgba(245, 158, 11, 0.1)' } }, { yAxis: wH }]);
     if (aH !== null) mAreas.push([{ yAxis: aH, itemStyle: { color: 'rgba(239, 68, 68, 0.1)' } }, { yAxis: Infinity }]);
 
+    const isLargeRange = sensorMeasurements.length > 1000;
+
     return {
-      tooltip: { trigger: 'axis' },
+      tooltip: { 
+        trigger: 'axis',
+        formatter: (params) => {
+          if (!params || params.length === 0) return '';
+          const item = params[0]; 
+          const val = Array.isArray(item.value) ? item.value[1] : item.value;
+          const label = isLargeRange ? `Promedio ${item.seriesName}` : item.seriesName;
+          
+          return `
+            <div style="font-weight: bold; margin-bottom: 4px;">${item.axisValueLabel}</div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              ${item.marker} ${label}: <b>${Number(val).toFixed(2)}</b>
+            </div>
+          `;
+        }
+      },
       grid: { left: '3%', right: '4%', bottom: '15%', containLabel: true },
       xAxis: { type: 'time', axisLine: { lineStyle: { color: '#64748b' } } },
       yAxis: { type: 'value', name: selectedSensor?.unidad_medida || 'Valor' },
       dataZoom: [{ type: 'inside' }, { type: 'slider', bottom: 10, height: 20 }],
+      animation: !isLargeRange,
       series: [{
-        name: 'Lectura', type: 'line', smooth: true, symbol: 'none', data,
+        name: 'Lectura', type: 'line', smooth: false, symbol: 'none', data,
+        // Ya no necesitamos sampling ni large porque enviamos datos pre-procesados y limpios
         lineStyle: { width: 2, color: '#2563eb' },
         markArea: { silent: true, data: mAreas },
         markLine: {
@@ -346,27 +465,64 @@ const Historicos = () => {
         }
       }]
     };
-  }, [sensorMeasurements, selectedSensor]);
+  }, [sensorMeasurements, selectedSensor, dateRange.start, dateRange.end]);
 
   const getEventChartOption = (s) => {
     const thresholds = getOrderedThresholdDefinitions(s);
+    const isLargeRange = s.data.length > 500;
     return {
-      tooltip: { trigger: 'axis' },
+      tooltip: { 
+        trigger: 'axis',
+        formatter: (params) => {
+          let res = `${params[0].axisValueLabel}<br/>`;
+          params.forEach(item => {
+            const val = Array.isArray(item.value) ? item.value[1] : item.value;
+            res += `${item.marker} ${item.seriesName}: <b>${Number(val).toFixed(2)}</b><br/>`;
+          });
+          return res;
+        }
+      },
       grid: { left: '3%', right: '4%', bottom: '15%', containLabel: true },
       xAxis: { type: 'time' },
       yAxis: { min: 0, max: 1, interval: 1 },
-      series: thresholds.map(t => ({ name: t.label, type: 'line', step: 'end', symbol: 'none', data: s.data.map(d => [d.time, d[t.key]]), lineStyle: { color: t.color } }))
+      animation: !isLargeRange,
+      series: thresholds.map(t => ({ 
+        name: t.label, type: 'line', step: 'end', symbol: 'none', 
+        sampling: 'average',
+        large: true,
+        data: s.data.map(d => [d.time, d[t.key]]), 
+        lineStyle: { color: t.color } 
+      }))
     };
   };
 
   const getActuatorChartOption = (s, i) => {
     const color = ['#2563eb', '#dc2626', '#f59e0b', '#10b981', '#7c3aed', '#0891b2'][i % 6];
+    const isLargeRange = s.data.length > 500;
     return {
-      tooltip: { trigger: 'axis' },
+      tooltip: { 
+        trigger: 'axis',
+        formatter: (params) => {
+          let res = `${params[0].axisValueLabel}<br/>`;
+          params.forEach(item => {
+            const val = Array.isArray(item.value) ? item.value[1] : item.value;
+            res += `${item.marker} ${item.seriesName}: <b>${Number(val).toFixed(2)}</b><br/>`;
+          });
+          return res;
+        }
+      },
       grid: { left: '3%', right: '4%', bottom: '15%', containLabel: true },
       xAxis: { type: 'time' },
       yAxis: { min: 0, max: 1, interval: 1 },
-      series: [{ name: s.actuatorName, type: 'line', step: 'end', symbol: 'none', data: s.data, lineStyle: { color }, areaStyle: { color, opacity: 0.1 } }]
+      animation: !isLargeRange,
+      series: [{ 
+        name: s.actuatorName, type: 'line', step: 'end', symbol: 'none', 
+        sampling: 'average',
+        large: true,
+        data: s.data, 
+        lineStyle: { color }, 
+        areaStyle: { color, opacity: 0.1 } 
+      }]
     };
   };
 

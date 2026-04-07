@@ -36,8 +36,10 @@ const runMaintenance = async () => {
   }
 };
 
-// Programar para las 01:00 AM
+// Programar para las 10:00 PM
 export const startMaintenanceService = () => {
-  cron.schedule('0 1 * * *', runMaintenance);
-  console.log('Servicio de mantenimiento programado (01:00 AM)');
+  cron.schedule('0 22 * * *', runMaintenance);
+  console.log('Servicio de mantenimiento programado (10:00 PM)');
 };
+
+export { runMaintenance };

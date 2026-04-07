@@ -1,5 +1,6 @@
 import db from '../config/db.js';
 import networkMonitor from '../services/networkMonitor.js';
+import { runMaintenance } from '../services/maintenanceService.js';
 
 const getNodes = async (req, res) => {
   try {
@@ -88,4 +89,13 @@ const deleteConnection = async (req, res) => {
   }
 };
 
-export default { getNodes, createNode, updateNode, deleteNode, getConnections, createConnection, updateConnection, deleteConnection };
+const triggerMaintenance = async (req, res) => {
+  try {
+    runMaintenance();
+    res.json({ message: 'Proceso de mantenimiento iniciado' });
+  } catch (error) {
+    res.status(500).json({ message: 'Error al iniciar mantenimiento', error: error.message });
+  }
+};
+
+export default { getNodes, createNode, updateNode, deleteNode, getConnections, createConnection, updateConnection, deleteConnection, triggerMaintenance };

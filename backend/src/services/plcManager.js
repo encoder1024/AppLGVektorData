@@ -193,6 +193,7 @@ class PLCManager {
         });
       } else if (plc.protocolo === 'SIMULATED') {
         console.log(`Iniciando PLC virtual: ${plc.nombre}`);
+        // Reset state on start
         this.connections.set(plc.id, { protocol: 'SIMULATED', simulatedActuatorStates: new Map() });
         this.startPolling(plc.id);
       } else {
@@ -224,6 +225,32 @@ class PLCManager {
     }
 
     return connected;
+  }
+
+  async readActuatorState(actuator) {
+    const conn = await this.ensureConnection(actuator.plc_id);
+    const address = parseInt(actuator.direccion_memoria, 10);
+    const isBooleanOutput =
+      actuator.tipo_dato_plc === 'BOOLEAN' ||
+      actuator.tipo_signal === 'DIGITAL_OUTPUT';
+
+    if (conn.protocol === 'MODBUS_TCP') {
+      const data = isBooleanOutput
+        ? await conn.client.readCoils(address, 1)
+        : await conn.client.readHoldingRegisters(address, 1);
+      return data.response._body.values[0];
+    } else if (conn.protocol === 'S7') {
+      return await new Promise((resolve, reject) => {
+        conn.client.readItems(actuator.direccion_memoria, (err, data) => {
+          if (err) reject(err);
+          else resolve(data[0]);
+        });
+      });
+    } else if (conn.protocol === 'SIMULATED') {
+      return conn.simulatedActuatorStates?.get(actuator.id) ?? false;
+    } else {
+      throw new Error(`Lectura no soportada para protocolo ${conn.protocol}`);
+    }
   }
 
   async writeActuator(actuator, value) {

@@ -262,10 +262,11 @@ const Dashboard = () => {
   const fetchDashboardData = async () => {
     setError('');
     try {
-      const [sensorResponse, actuatorResponse, actuatorActionsResponse] = await Promise.all([
+      const [sensorResponse, actuatorResponse, actuatorActionsResponse, syncResponse] = await Promise.all([
         api.get('/sensors'),
         api.get('/actuators'),
-        api.get('/actuator-actions')
+        api.get('/actuator-actions'),
+        api.get('/actuators/sync')
       ]);
 
       const activeSensors = sensorResponse.data.filter((sensor) => sensor.activo);
@@ -277,6 +278,18 @@ const Dashboard = () => {
       });
 
       const lastActionByActuator = {};
+      
+      // Primero cargamos el estado REAL del PLC
+      Object.entries(syncResponse.data || {}).forEach(([actuatorId, state]) => {
+        lastActionByActuator[actuatorId] = {
+          actuator_id: actuatorId,
+          action_type: 'SYNC',
+          timestamp: new Date().toISOString(),
+          details: { state: state }
+        };
+      });
+
+      // Sobrescribimos o complementamos con el histórico, dando prioridad al estado actual
       (actuatorActionsResponse.data || []).forEach((action) => {
         if (!action.actuator_id || lastActionByActuator[action.actuator_id]) {
           return;

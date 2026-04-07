@@ -14,5 +14,6 @@ router.get('/connections', protect, infraController.getConnections);
 router.post('/connections', protect, infraController.createConnection);
 router.put('/connections/:id', protect, infraController.updateConnection);
 router.delete('/connections/:id', protect, infraController.deleteConnection);
+router.post('/maintenance/trigger', protect, infraController.triggerMaintenance);
 
 export default router;

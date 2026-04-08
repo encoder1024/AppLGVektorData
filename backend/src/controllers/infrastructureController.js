@@ -91,8 +91,9 @@ const deleteConnection = async (req, res) => {
 
 const triggerMaintenance = async (req, res) => {
   try {
-    runMaintenance();
-    res.json({ message: 'Proceso de mantenimiento iniciado' });
+    const { start, end } = req.body;
+    runMaintenance(start, end);
+    res.json({ message: `Proceso de mantenimiento iniciado ${start && end ? 'para el rango especificado' : 'para el día anterior'}` });
   } catch (error) {
     res.status(500).json({ message: 'Error al iniciar mantenimiento', error: error.message });
   }

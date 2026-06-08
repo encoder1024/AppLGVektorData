@@ -283,4 +283,23 @@ const controlActuator = async (req, res) => {
   }
 };
 
-export default { getActuators, createActuator, updateActuator, deleteActuator, controlActuator };
+const syncActuators = async (req, res) => {
+  try {
+    const actuators = await db('actuators').where({ activo: true });
+    const states = {};
+
+    for (const actuator of actuators) {
+      try {
+        const state = await plcManager.readActuatorState(actuator);
+        states[actuator.id] = state;
+      } catch (err) {
+        console.error(`Error syncing actuator ${actuator.id}:`, err.message);
+      }
+    }
+    res.json(states);
+  } catch (error) {
+    res.status(500).json({ message: 'Error al sincronizar estados', error: error.message });
+  }
+};
+
+export default { getActuators, createActuator, updateActuator, deleteActuator, controlActuator, syncActuators };

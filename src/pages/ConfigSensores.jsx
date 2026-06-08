@@ -56,6 +56,7 @@ const ConfigSensores = () => {
     warning_high: '',
     alert_low: '',
     alert_high: '',
+    setpoint: '',
     activo: true,
     zona: 'ZONA_A',
     orden_dashboard: 0
@@ -98,7 +99,7 @@ const ConfigSensores = () => {
         direccion_memoria: '', unidad_medida: '', calibration_profile_id: '',
         tipo_instrumento: 'GAUGE_RADIAL',
         min_range: 0, max_range: 100, warning_low: '', warning_high: '',
-        alert_low: '', alert_high: '',
+        alert_low: '', alert_high: '', setpoint: '',
         activo: true, zona: 'ZONA_A', orden_dashboard: 0
       });
     }
@@ -120,7 +121,7 @@ const ConfigSensores = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     const submissionData = { ...formData };
-    ['warning_low', 'warning_high', 'alert_low', 'alert_high', 'calibration_profile_id'].forEach(key => {
+    ['warning_low', 'warning_high', 'alert_low', 'alert_high', 'setpoint', 'calibration_profile_id'].forEach(key => {
       if (submissionData[key] === '') submissionData[key] = null;
     });
 
@@ -289,6 +290,18 @@ const ConfigSensores = () => {
 
             <TabPanel value={tabValue} index={2}>
               <Grid container spacing={3}>
+                <Grid item xs={12}>
+                  <Typography variant="subtitle2" gutterBottom color="success.main" sx={{ fontWeight: 'bold' }}>
+                    Punto de Operación Ideal (SETpoint)
+                  </Typography>
+                  <TextField 
+                    fullWidth name="setpoint" label="Valor SETpoint" type="number" 
+                    value={formData.setpoint} onChange={handleChange} 
+                    helperText="Este valor se indicará en los gauges como el punto de consigna ideal de operación."
+                    sx={{ mb: 2 }} 
+                  />
+                  <Divider sx={{ my: 1 }} />
+                </Grid>
                 <Grid item xs={12} sm={6}>
                   <Typography variant="subtitle2" gutterBottom color="warning.main">Zonas de Aviso (Preventivo)</Typography>
                   <TextField fullWidth name="warning_low" label="Umbral Inferior" type="number" value={formData.warning_low} onChange={handleChange} sx={{ mb: 2 }} />

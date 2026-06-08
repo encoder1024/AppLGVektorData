@@ -110,6 +110,21 @@ const CalderaFondoAnimado = memo(() => {
 export const CalderaInteractiva = memo(({ datosSensores }) => {
   const [showTooltip, setShowTooltip] = useState(false);
 
+  // Helper para determinar el color basado en los limites del sensor (Sincronizado con Dashboard)
+  const getStatusColor = (sensorData) => {
+    const { value, alerts } = sensorData;
+    if (!alerts) return "#10b981"; // Default green
+
+    // Logica de colores segun limites
+    if (alerts.alert_high !== null && value >= alerts.alert_high) return "#ef4444"; // Rojo (Critico Alto)
+    if (alerts.warning_high !== null && value >= alerts.warning_high) return "#f59e0b"; // Naranja (Aviso Alto)
+    
+    if (alerts.alert_low !== null && value <= alerts.alert_low) return "#3b82f6"; // Azul (Critico Bajo)
+    if (alerts.warning_low !== null && value <= alerts.warning_low) return "#f59e0b"; // Naranja (Aviso Bajo)
+
+    return "#10b981"; // Verde (Normal)
+  };
+
   return (
     <div style={{ position: "relative", width: "100%", maxWidth: "900px" }}>
       <img src={imagenCaldera} style={{ width: "100%", display: "block" }} alt="Caldera" />
@@ -126,18 +141,65 @@ export const CalderaInteractiva = memo(({ datosSensores }) => {
 
         {/* Capa de datos dinámicos (Se actualiza con los sensores) */}
         <g style={{ pointerEvents: "auto" }}>
-          {/* LUZ DE ALERTA */}
+          {/* TEMP001 (PLC01-S01) - ENTRADA AGUA */}
           <motion.circle
-            cx="97.5" cy="106" r="25"
-            fill={Number(datosSensores.temperatura) > 80 ? "red" : "green"}
-            animate={{ opacity: [1, 0.4, 1] }}
-            transition={{ repeat: Infinity, duration: 1.5 }}
+            id="circle-temp01"
+            cx="97" cy="106" r="27"
+            fill={getStatusColor(datosSensores.steamTemp)}
+            animate={{ scale: [1, 1.05, 1], opacity: [1, 0.7, 1] }}
+            transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
             style={{ cursor: "pointer" }}
+            onClick={() => setShowTooltip(!showTooltip)}
           />
+          <text x="65" y="75" fill="black" fontSize="14" fontWeight="bold" style={{ pointerEvents: "none" }}>TEMP001</text>
+          <text x="77" y="63" fill="#2563eb" fontSize="14" fontWeight="bold" style={{ pointerEvents: "none" }}>
+            {Number(datosSensores.steamTemp.value || 0).toFixed(1)}°C
+          </text>
 
-          {/* ÁREAS INTERACTIVAS */}
-          <circle cx="175.5" cy="106" r="25" fill="#00ff11" opacity="0.1" style={{ cursor: "help" }} onClick={() => setShowTooltip(!showTooltip)} />
-          <circle cx="254.5" cy="106" r="25" fill="#00ff11" opacity="0.1" style={{ cursor: "help" }} onClick={() => setShowTooltip(!showTooltip)} />
+          {/* CAUD01 (PLC01-S01) - CAUDAL STEAM */}
+          <motion.circle
+            id="circle-caud01"
+            cx="254.5" cy="106" r="27"
+            fill={getStatusColor(datosSensores.steamFlow)}
+            animate={{ scale: [1, 1.05, 1], opacity: [1, 0.7, 1] }}
+            transition={{ repeat: Infinity, duration: 1.8, ease: "easeInOut" }}
+            style={{ cursor: "pointer" }}
+            onClick={() => setShowTooltip(!showTooltip)}
+          />
+          <text x="227" y="75" fill="black" fontSize="14" fontWeight="bold" style={{ pointerEvents: "none" }}>CAUD01</text>
+          <text x="229" y="63" fill="#2563eb" fontSize="14" fontWeight="bold" style={{ pointerEvents: "none" }}>
+            {Number(datosSensores.steamFlow.value || 0).toFixed(1)} m³/h
+          </text>
+
+          {/* CAUD02 (PLC01-S01) - CAUDAL FUEL GAS */}
+          <motion.circle
+            id="circle-caud02"
+            cx="40" cy="363" r="27"
+            fill={getStatusColor(datosSensores.fuelFlow)}
+            animate={{ scale: [1, 1.05, 1], opacity: [1, 0.7, 1] }}
+            transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
+            style={{ cursor: "pointer" }}
+            onClick={() => setShowTooltip(!showTooltip)}
+          />
+          <text x="12" y="333" fill="black" fontSize="14" fontWeight="bold" style={{ pointerEvents: "none" }}>CAUD02</text>
+          <text x="15" y="321" fill="#2563eb" fontSize="14" fontWeight="bold" style={{ pointerEvents: "none" }}>
+            {Number(datosSensores.fuelFlow.value || 0).toFixed(1)} m³/h
+          </text>
+
+          {/* GAS001 (PLC01-S01) - FUEL GAS m3/h */}
+          <motion.circle
+            id="circle-gas001"
+            cx="97" cy="363" r="27"
+            fill={getStatusColor(datosSensores.fuelGas)}
+            animate={{ scale: [1, 1.05, 1], opacity: [1, 0.7, 1] }}
+            transition={{ repeat: Infinity, duration: 2.2, ease: "easeInOut" }}
+            style={{ cursor: "pointer" }}
+            onClick={() => setShowTooltip(!showTooltip)}
+          />
+          <text x="72" y="333" fill="black" fontSize="14" fontWeight="bold" style={{ pointerEvents: "none" }}>GAS001</text>
+          <text x="72" y="321" fill="#2563eb" fontSize="14" fontWeight="bold" style={{ pointerEvents: "none" }}>
+            {Number(datosSensores.fuelGas.value || 0).toFixed(1)} m³/h
+          </text>
         </g>
       </svg>
 
@@ -147,14 +209,35 @@ export const CalderaInteractiva = memo(({ datosSensores }) => {
           <motion.div
             initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
             style={{
-              position: "absolute", top: "20%", left: "55%",
+              position: "absolute", top: "10%", left: "40%",
               background: "rgba(0,0,0,0.85)", color: "white", padding: "15px", borderRadius: "8px", border: "1px solid #555",
+              zIndex: 100, minWidth: "220px"
             }}
           >
-            <h4>Estado de Sensores</h4>
-            <p>Temperatura: {datosSensores.temperatura}°C</p>
-            <p>Presión: {datosSensores.presion} bar</p>
-            <button onClick={() => setShowTooltip(false)}>Cerrar</button>
+            <h4 style={{ margin: "0 0 10px 0" }}>Estado de Caldera</h4>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <span style={{ color: '#aaa' }}>TEMP001:</span>
+              <span style={{ fontWeight: 'bold' }}>{Number(datosSensores.steamTemp.value || 0).toFixed(1)}°C</span>
+              
+              <span style={{ color: '#aaa' }}>CAUD01:</span>
+              <span style={{ fontWeight: 'bold' }}>{Number(datosSensores.steamFlow.value || 0).toFixed(1)} m³/h</span>
+              
+              <span style={{ color: '#aaa' }}>CAUD02:</span>
+              <span style={{ fontWeight: 'bold' }}>{Number(datosSensores.fuelFlow.value || 0).toFixed(1)} m³/h</span>
+              
+              <span style={{ color: '#aaa' }}>GAS001:</span>
+              <span style={{ fontWeight: 'bold' }}>{Number(datosSensores.fuelGas.value || 0).toFixed(1)} m³/h</span>
+            </div>
+            <button 
+              onClick={() => setShowTooltip(false)}
+              style={{ 
+                marginTop: '15px', width: '100%', padding: '5px', 
+                background: '#444', color: 'white', border: 'none', 
+                borderRadius: '4px', cursor: 'pointer' 
+              }}
+            >
+              Cerrar
+            </button>
           </motion.div>
         )}
       </AnimatePresence>

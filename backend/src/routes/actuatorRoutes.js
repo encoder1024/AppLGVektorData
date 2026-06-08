@@ -7,6 +7,7 @@ const router = express.Router();
 router.use(protect);
 
 router.get('/', actuatorController.getActuators);
+router.get('/sync', actuatorController.syncActuators);
 router.post('/:id/control', authorize('ADMIN', 'DEVELOPER', 'LIDER', 'TECHNICIAN'), actuatorController.controlActuator);
 
 // Solo ADMIN y DEVELOPER pueden gestionar la configuracion fisica de actuadores

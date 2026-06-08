@@ -12,66 +12,110 @@ const CalderaView = () => {
   const [isOn, setIsOn] = useState(false);
   const [sensorId, setSensorId] = useState(null);
 
-  // Datos simulados iniciales, se actualizarán con datos reales
+  // Datos dinámicos actualizados por Socket
   const [datosSensores, setDatosSensores] = useState({
-    temperatura: 0,
-    presion: 2.5
+    temperatura: { value: 0, alerts: {} }, // TEMP001 (PVektor02)
+    steamTemp: { value: 0, alerts: {} },   // TEMP01 (PLC01-S01)
+    steamFlow: { value: 0, alerts: {} },   // CAUD01 (PLC01-S01)
+    fuelFlow: { value: 0, alerts: {} },    // CAUD02 (PLC01-S01)
+    fuelGas: { value: 0, alerts: {} }      // GAS001 (PLC01-S01)
+  });
+
+  const sensorMapping = useRef({
+    originalTemp: null,
+    steamTemp: null,
+    steamFlow: null,
+    fuelFlow: null,
+    fuelGas: null
   });
 
   useEffect(() => {
-    // 1. Buscar el ID del sensor "sensor 1" en PVektor02
-    const findSensor = async () => {
+    const findSensors = async () => {
       try {
-        console.log('[CalderaView] Fetching sensors list...');
         const response = await api.get('/sensors');
+        const allSensors = response.data;
 
-        // Busqueda especifica para TEMP001 (ID: 7) en PVektor02
-        const sensor = response.data.find(s => {
-          return (s.id == 7) || (String(s.tag_name).toUpperCase() === 'TEMP001' && s.plc_id == 2);
+        // Buscamos los sensores especificos por tag_name y PLC si es necesario
+        const findSensor = (tag, plcId) => {
+          return allSensors.find(s => 
+            String(s.tag_name).toUpperCase() === tag.toUpperCase() && 
+            (!plcId || s.plc_id == plcId)
+          );
+        };
+
+        const mapSensorData = (tag, plcId) => {
+          const s = findSensor(tag, plcId);
+          if (!s) return { id: null, alerts: {} };
+          return {
+            id: s.id,
+            alerts: {
+              alert_high: s.alert_high,
+              alert_low: s.alert_low,
+              warning_high: s.warning_high,
+              warning_low: s.warning_low
+            }
+          };
+        };
+
+        const mapping = {
+          originalTemp: mapSensorData('TEMP001', 2),
+          steamTemp: mapSensorData('TEMP001', 1).id ? mapSensorData('TEMP001', 1) : mapSensorData('TEMP001'),
+          steamFlow: mapSensorData('CAUD01', 1).id ? mapSensorData('CAUD01', 1) : mapSensorData('CAUD01'),
+          fuelFlow: mapSensorData('CAUD02', 1).id ? mapSensorData('CAUD02', 1) : mapSensorData('CAUD02'),
+          fuelGas: mapSensorData('GAS001', 1).id ? mapSensorData('GAS001', 1) : mapSensorData('GAS001')
+        };
+
+        sensorMapping.current = mapping;
+        
+        // Inicializamos el estado con los limites
+        setDatosSensores({
+          temperatura: { value: 0, alerts: mapping.originalTemp.alerts },
+          steamTemp: { value: 0, alerts: mapping.steamTemp.alerts },
+          steamFlow: { value: 0, alerts: mapping.steamFlow.alerts },
+          fuelFlow: { value: 0, alerts: mapping.fuelFlow.alerts },
+          fuelGas: { value: 0, alerts: mapping.fuelGas.alerts }
         });
-
-        if (sensor) {
-          console.log('[CalderaView] Sensor TEMP001 (ID:7) FOUND:', sensor);
-          setSensorId(sensor.id);
-        } else {
-
-          console.warn('[CalderaView] Sensor 1 NOT FOUND. Available sensors:', response.data.map(s => `${s.tag_name} (ID:${s.id}) on PLC:${s.plc_nombre}`));
-        }
       } catch (err) {
-        console.error('[CalderaView] Error fetching sensors:', err);
+        console.error('[CalderaView] Error al mapear sensores:', err);
       }
     };
 
-    findSensor();
+    findSensors();
   }, []);
 
   useEffect(() => {
-    // 2. Conectar WebSocket para actualizaciones en tiempo real
     const socket = io('http://localhost:3000');
 
-    socket.on('connect', () => {
-      console.log('[CalderaView] Socket connected:', socket.id);
-    });
-
     socket.on('sensor_update', (data) => {
-      // Loggear el update que llega para comparar IDs y tipos
-      if (sensorId) {
-        const match = String(data.sensor_id) === String(sensorId);
-        if (match) {
-          setDatosSensores((prev) => ({
-            ...prev,
-            temperatura: Number(data.value)
-          }));
+      const { sensor_id, value } = data;
+      
+      setDatosSensores((prev) => {
+        const mapping = sensorMapping.current;
+        const newDatos = { ...prev };
+
+        const updateIfMatch = (key) => {
+          if (String(sensor_id) === String(mapping[key]?.id)) {
+            newDatos[key] = { ...prev[key], value: Number(value) };
+          }
+        };
+
+        updateIfMatch('originalTemp');
+        updateIfMatch('steamTemp');
+        updateIfMatch('steamFlow');
+        updateIfMatch('fuelFlow');
+        updateIfMatch('fuelGas');
+        
+        // Para compatibilidad con el modal que usa temperatura
+        if (String(sensor_id) === String(mapping.originalTemp?.id)) {
+          newDatos.temperatura = { ...prev.temperatura, value: Number(value) };
         }
-      }
+        
+        return newDatos;
+      });
     });
 
-
-    return () => {
-      console.log('[CalderaView] Disconnecting socket...');
-      socket.disconnect();
-    };
-  }, [sensorId]);
+    return () => socket.disconnect();
+  }, []);
 
   const handleToggle = () => {
     setIsOn(!isOn);

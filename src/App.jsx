@@ -15,6 +15,7 @@ import SaludSistema from './pages/SaludSistema';
 import Usuarios from './pages/Usuarios';
 import AppConfig from './pages/AppConfig';
 import CalderaView from './pages/CalderaView';
+import RedIndustrial from './pages/RedIndustrial';
 
 // Tema personalizado industrial
 const theme = createTheme({
@@ -74,6 +75,7 @@ function App() {
               <Route path="config/calibracion" element={<ConfigCalibration />} />
               <Route path="config/sensores" element={<ConfigSensores />} />
               <Route path="config/actuadores" element={<ConfigActuadores />} />
+              <Route path="config/red-industrial" element={<RedIndustrial />} />
               <Route path="caldera" element={<CalderaView />} />
               <Route path="admin/usuarios" element={<RoleRoute roles={['ADMIN']}><Usuarios /></RoleRoute>} />
               <Route path="settings" element={<RoleRoute roles={['ADMIN']}><AppConfig /></RoleRoute>} />

@@ -3,7 +3,7 @@ import plcManager from "./plcManager.js";
 import si from "systeminformation";
 
 const HEALTH_INTERVAL_MS = Number(
-  import.meta.env.SYSTEM_HEALTH_INTERVAL_MS || 30000,
+  process.env.SYSTEM_HEALTH_INTERVAL_MS || 30000,
 );
 
 const getFreshnessWindowMs = (scanRateMs) =>

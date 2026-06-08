@@ -24,7 +24,7 @@ import { startMaintenanceService } from './services/maintenanceService.js';
 
 const app = express();
 const httpServer = createServer(app);
-const port = process.env.PORT || 3000;
+const port = import.meta.env.PORT || 3000;
 
 const io = new Server(httpServer, {
   cors: {
@@ -82,7 +82,7 @@ async function initSystem() {
       return;
     } catch (err) {
       retries -= 1;
-      console.log(`Esperando DB... (${retries})`);
+      console.error(`Esperando DB... (${retries})` + err);
       await new Promise((resolve) => setTimeout(resolve, 10000));
     }
   }

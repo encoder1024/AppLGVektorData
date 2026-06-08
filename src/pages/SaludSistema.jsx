@@ -16,7 +16,7 @@ import {
 import { io } from 'socket.io-client';
 import api from '../services/api';
 
-const backgroundImageUrl = new URL('../../ProyectoEjecutivo/EstructuraProyectoPiloto-rev00.jpeg', import.meta.url).href;
+const backgroundImageUrl = new URL('../assets/EstructuraProyectoPiloto-rev00.jpeg', import.meta.url).href;
 
 const getStatusPresentation = (status) => {
   if (status === 'green') {

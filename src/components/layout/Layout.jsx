@@ -27,6 +27,7 @@ import {
   Functions as FunctionsIcon,
   ToggleOn as ToggleIcon,
   HealthAndSafety as HealthIcon,
+  Router as RouterIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -67,6 +68,7 @@ const Layout = () => {
     { text: 'Perfiles Calibracion', icon: <FunctionsIcon />, path: '/config/calibracion', roles: ['ADMIN', 'DEVELOPER'] },
     { text: 'Sensores Configuracion', icon: <SensorsIcon />, path: '/config/sensores', roles: ['ADMIN', 'DEVELOPER', 'LIDER'] },
     { text: 'Actuadores', icon: <ToggleIcon />, path: '/config/actuadores', roles: ['ADMIN', 'DEVELOPER'] },
+    { text: 'Red Industrial', icon: <RouterIcon />, path: '/config/red-industrial', roles: ['ADMIN', 'DEVELOPER'] },
     { text: 'Usuarios', icon: <PeopleIcon />, path: '/admin/usuarios', roles: ['ADMIN'] },
     { text: 'Ajustes App', icon: <SettingsIcon />, path: '/settings', roles: ['ADMIN'] },
   ];
@@ -82,6 +84,7 @@ const Layout = () => {
           backgroundColor: '#1e293b',
           boxShadow: 'none',
           borderBottom: '1px solid rgba(255, 255, 255, 0.12)',
+          borderRadius: 0,
         }}
       >
         <Toolbar>

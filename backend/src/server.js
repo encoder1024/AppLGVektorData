@@ -16,12 +16,15 @@ import actuatorActionsRoutes from './routes/actuatorActionsRoutes.js';
 import systemHealthRoutes from './routes/systemHealthRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import appConfigRoutes from './routes/appConfigRoutes.js';
+import infrastructureRoutes from './routes/infrastructureRoutes.js';
 import plcManager from './services/plcManager.js';
 import systemHealthService from './services/systemHealthService.js';
+import networkMonitor from './services/networkMonitor.js';
+import { startMaintenanceService } from './services/maintenanceService.js';
 
 const app = express();
 const httpServer = createServer(app);
-const port = process.env.PORT || 3000;
+const port = import.meta.env.PORT || 3000;
 
 const io = new Server(httpServer, {
   cors: {
@@ -49,6 +52,7 @@ app.use('/api/actuator-actions', actuatorActionsRoutes);
 app.use('/api/system-health', systemHealthRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/config', appConfigRoutes);
+app.use('/api/infrastructure', infrastructureRoutes);
 
 async function initSystem() {
   let retries = 15;
@@ -62,14 +66,23 @@ async function initSystem() {
 
       plcManager.setIO(io);
       await plcManager.initAll();
+      plcManager.startSupervisor(); // <--- Activamos el supervisor de resiliencia
       console.log('Motor de adquisición PLC iniciado.');
 
       await systemHealthService.start();
       console.log('Motor de housekeeping de salud iniciado.');
+
+      networkMonitor.setIO(io);
+      await networkMonitor.start();
+      console.log('Motor de monitoreo de red industrial iniciado.');
+      
+      startMaintenanceService();
+      console.log('Servicio de mantenimiento de la base de datos iniciado.');
+
       return;
     } catch (err) {
       retries -= 1;
-      console.log(`Esperando DB... (${retries})`);
+      console.error(`Esperando DB... (${retries})` + err);
       await new Promise((resolve) => setTimeout(resolve, 10000));
     }
   }

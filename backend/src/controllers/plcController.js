@@ -1,6 +1,7 @@
 import db from '../config/db.js';
 import { logAudit } from '../utils/auditLogger.js';
 import plcManager from '../services/plcManager.js';
+import networkMonitor from '../services/networkMonitor.js';
 
 const toNullableNumber = (value) => {
   if (value === '' || value === null || value === undefined) {
@@ -31,17 +32,25 @@ const getPlcTableColumns = async () => {
 const normalizePlcPayload = async (payload) => {
   const columns = await getPlcTableColumns();
 
+  // Determinamos el puerto por defecto segun el protocolo
+  let defaultPort = 502;
+  if (payload.protocolo === 'S7') {
+    defaultPort = 102;
+  }
+
   const normalized = {
     nombre: payload.nombre,
     marca: payload.marca,
     protocolo: payload.protocolo,
     ip_address: payload.ip_address,
-    puerto: toNullableNumber(payload.puerto) ?? 102,
+    puerto: toNullableNumber(payload.puerto) ?? defaultPort,
     unidad_id: toNullableNumber(payload.unidad_id) ?? 1,
     scan_rate_ms: toNullableNumber(payload.scan_rate_ms) ?? 1000,
     activo: columns.has('activo') ? toBoolean(payload.activo, true) : undefined,
     zona: columns.has('zona') ? payload.zona || 'ZONA_A' : undefined,
     orden_dashboard: columns.has('orden_dashboard') ? toNullableNumber(payload.orden_dashboard) ?? 0 : undefined,
+    pos_x: columns.has('pos_x') ? toNullableNumber(payload.pos_x) ?? 0 : undefined,
+    pos_y: columns.has('pos_y') ? toNullableNumber(payload.pos_y) ?? 0 : undefined,
   };
 
   return Object.fromEntries(
@@ -74,8 +83,13 @@ const createPLC = async (req, res) => {
     const [newPlc] = await db('plcs').insert(payload).returning('*');
 
     if (newPlc.activo) {
-      plcManager.connect(newPlc);
+      // Intentamos conectar pero no bloqueamos la respuesta si falla la red
+      plcManager.connect(newPlc).catch(err => 
+        console.error(`Error de conexion inmediata al crear PLC ${newPlc.nombre}:`, err.message)
+      );
     }
+
+    await networkMonitor.refresh();
 
     await logAudit(
       req.user.id,
@@ -105,10 +119,15 @@ const updatePLC = async (req, res) => {
     const [updatedPlc] = await db('plcs').where({ id }).update(updates).returning('*');
 
     if (updatedPlc.activo) {
-      plcManager.connect(updatedPlc);
+      // Lanzamos conexion pero no esperamos el exito para responder al cliente
+      plcManager.connect(updatedPlc).catch(err => 
+        console.error(`Error de conexion inmediata al actualizar PLC ${updatedPlc.nombre}:`, err.message)
+      );
     } else {
-      plcManager.disconnect(updatedPlc.id);
+      await plcManager.disconnect(updatedPlc.id);
     }
+
+    await networkMonitor.refresh();
 
     await logAudit(
       req.user.id,
@@ -135,6 +154,8 @@ const deletePLC = async (req, res) => {
 
     await db('plcs').where({ id }).del();
     plcManager.disconnect(id);
+
+    await networkMonitor.refresh();
 
     await logAudit(
       req.user.id,

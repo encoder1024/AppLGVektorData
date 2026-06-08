@@ -14,6 +14,7 @@ import api from '../services/api';
 const formulaTypes = [
   { value: 'POLYNOMIAL', label: 'Polinomio General (c4x⁴ + ... + c0)' },
   { value: 'LINEAR_SCALE', label: 'Escalado Lineal (mx + b)' },
+  { value: 'LOGARITHMIC', label: 'Logarítmica Natural (c0 + c1 * ln(x + c2))' },
   { value: 'C_TO_F', label: 'Celsius a Fahrenheit' },
   { value: 'F_TO_C', label: 'Fahrenheit a Celsius' },
   { value: 'PSI_TO_BAR', label: 'PSI a Bar' },
@@ -152,6 +153,10 @@ const ConfigCalibration = () => {
                       <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
                         y = {p.c1}x + {p.c0}
                       </Typography>
+                    ) : p.tipo_formula === 'LOGARITHMIC' ? (
+                      <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+                        y = {p.c0} + {p.c1} * ln(x + {p.c2})
+                      </Typography>
                     ) : (
                       <Typography variant="caption">Fórmula Estándar Industrial</Typography>
                     )}
@@ -188,20 +193,38 @@ const ConfigCalibration = () => {
                 </TextField>
               </Grid>
 
-              {isPolynomial && (
+              {(isPolynomial || formData.tipo_formula === 'LOGARITHMIC') && (
                 <>
-                  <Grid item xs={12}><Divider sx={{ my: 1 }}>Coeficientes del Polinomio</Divider></Grid>
-                  <Grid item xs={6} sm={4}>
-                    <TextField fullWidth name="c1" label="Pendiente (c1/m)" type="number" value={formData.c1} onChange={handleChange} required />
+                  <Grid item xs={12}>
+                    <Divider sx={{ my: 1 }}>
+                      {formData.tipo_formula === 'LOGARITHMIC' ? 'Parámetros Logarítmicos' : 'Coeficientes del Polinomio'}
+                    </Divider>
                   </Grid>
                   <Grid item xs={6} sm={4}>
-                    <TextField fullWidth name="c0" label="Offset (c0/b)" type="number" value={formData.c0} onChange={handleChange} required />
+                    <TextField 
+                      fullWidth name="c1" 
+                      label={formData.tipo_formula === 'LOGARITHMIC' ? 'Escala (c1)' : 'Pendiente (c1/m)'} 
+                      type="number" value={formData.c1} onChange={handleChange} required 
+                    />
                   </Grid>
+                  <Grid item xs={6} sm={4}>
+                    <TextField 
+                      fullWidth name="c0" 
+                      label={formData.tipo_formula === 'LOGARITHMIC' ? 'Offset (c0)' : 'Offset (c0/b)'} 
+                      type="number" value={formData.c0} onChange={handleChange} required 
+                    />
+                  </Grid>
+                  {(formData.tipo_formula === 'POLYNOMIAL' || formData.tipo_formula === 'LOGARITHMIC') && (
+                    <Grid item xs={6} sm={4}>
+                      <TextField 
+                        fullWidth name="c2" 
+                        label={formData.tipo_formula === 'LOGARITHMIC' ? 'Despl. X (c2)' : 'Cuadrático (c2)'} 
+                        type="number" value={formData.c2} onChange={handleChange} required 
+                      />
+                    </Grid>
+                  )}
                   {formData.tipo_formula === 'POLYNOMIAL' && (
                     <>
-                      <Grid item xs={6} sm={4}>
-                        <TextField fullWidth name="c2" label="Cuadrático (c2)" type="number" value={formData.c2} onChange={handleChange} required />
-                      </Grid>
                       <Grid item xs={6} sm={4}>
                         <TextField fullWidth name="c3" label="Cúbico (c3)" type="number" value={formData.c3} onChange={handleChange} required />
                       </Grid>

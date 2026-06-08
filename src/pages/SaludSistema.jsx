@@ -16,7 +16,7 @@ import {
 import { io } from 'socket.io-client';
 import api from '../services/api';
 
-const backgroundImageUrl = new URL('../../ProyectoEjecutivo/EstructuraProyectoPiloto-rev00.jpeg', import.meta.url).href;
+const backgroundImageUrl = new URL('../assets/EstructuraProyectoPiloto-rev00.jpeg', import.meta.url).href;
 
 const getStatusPresentation = (status) => {
   if (status === 'green') {
@@ -130,6 +130,40 @@ const getWorstStatus = (statuses, fallback = 'red') => {
     return 'yellow';
   }
   return 'green';
+};
+
+const MetricBar = ({ label, value, unit = '%', subtitle }) => {
+  const numericValue = parseFloat(value) || 0;
+  let color = '#16a34a'; // green
+  if (numericValue > 85) {
+    color = '#dc2626'; // red
+  } else if (numericValue > 70) {
+    color = '#d97706'; // yellow
+  }
+
+  return (
+    <Box sx={{ mb: 1.5 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+        <Typography variant="caption" sx={{ fontWeight: 'bold' }}>{label}</Typography>
+        <Typography variant="caption" sx={{ fontWeight: 'bold' }}>{value}{unit}</Typography>
+      </Box>
+      <Box sx={{ width: '100%', height: 8, backgroundColor: '#e2e8f0', borderRadius: 4, overflow: 'hidden' }}>
+        <Box
+          sx={{
+            width: `${Math.min(numericValue, 100)}%`,
+            height: '100%',
+            backgroundColor: color,
+            transition: 'width 0.5s ease-in-out'
+          }}
+        />
+      </Box>
+      {subtitle && (
+        <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mt: 0.5, fontSize: '0.65rem' }}>
+          {subtitle}
+        </Typography>
+      )}
+    </Box>
+  );
 };
 
 const formatSnapshotValue = (value) => {
@@ -443,19 +477,36 @@ const SaludSistema = () => {
         title: 'PC Sistema',
         position: { top: '47.5%', left: '4%', width: '18%', height: '18%' },
         led: { top: '45%', left: '6.5%' },
-        status: plcs.length > 0 ? 'green' : 'yellow',
+        status: healthSnapshotMap['SERVER:1']?.status || (plcs.length > 0 ? 'green' : 'yellow'),
         description: 'Interfaz HMI, servidor de comunicaciones y base de datos del sistema.',
         metrics: [
-          { label: 'PLCs registrados', value: plcs.length },
-          { label: 'Sensores registrados', value: sensors.length },
-          { label: 'Actuadores registrados', value: actuators.length },
+          { label: 'CPU', value: healthSnapshotMap['SERVER:1']?.metadata?.cpu_load ? `${healthSnapshotMap['SERVER:1'].metadata.cpu_load}%` : 'N/A' },
+          {
+            label: 'RAM',
+            value: healthSnapshotMap['SERVER:1']?.metadata?.mem_used_gb
+              ? `${healthSnapshotMap['SERVER:1'].metadata.mem_used_gb} / ${healthSnapshotMap['SERVER:1'].metadata.mem_total_gb} GB`
+              : 'N/A'
+          },
+          {
+            label: 'Disco',
+            value: healthSnapshotMap['SERVER:1']?.metadata?.disk_used_gb
+              ? `${healthSnapshotMap['SERVER:1'].metadata.disk_used_gb} / ${healthSnapshotMap['SERVER:1'].metadata.disk_total_gb} GB`
+              : 'N/A'
+          },
         ],
         rows: [
-          { primary: 'Interfaz de Usuario', secondary: 'Frontend React / Dashboard', state: 'Disponible' },
-          { primary: 'Servidor de Comunicaciones', secondary: 'Backend / Socket / API', state: 'Disponible' },
-          { primary: 'Base de Datos', secondary: 'PostgreSQL / Knex', state: 'Disponible' },
+          {
+            primary: 'Servidor de Aplicaciones',
+            secondary: healthSnapshotMap['SERVER:1']?.metadata?.os_distro || 'Backend Node.js',
+            state: healthSnapshotMap['SERVER:1']?.is_available ? 'Ejecutando' : 'No disponible'
+          },
+          {
+            primary: 'Base de Datos',
+            secondary: `PostgreSQL (${healthSnapshotMap['SERVER:1']?.metadata?.db_latency_ms || 0}ms)`,
+            state: healthSnapshotMap['SERVER:1']?.metadata?.db_status === 'green' ? 'En Linea' : 'Error'
+          },
         ],
-        snapshotEntries: [],
+        snapshotEntries: buildSnapshotEntries([{ componentType: 'SERVER', item: { id: 1 }, label: 'Métricas de Sistema' }]),
       },
       {
         key: 'switch-sistemas',
@@ -680,45 +731,105 @@ const SaludSistema = () => {
                   {selectedComponent.snapshotEntries?.length > 0 ? (
                     selectedComponent.snapshotEntries.map((entry, index) => (
                       <Paper key={`${entry.label}-${index}`} variant="outlined" sx={{ p: 1.5, backgroundColor: '#f8fafc' }}>
-                        <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 1 }}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 2 }}>
                           {entry.label}
                         </Typography>
-                        <Typography variant="caption" sx={{ display: 'block' }}>
-                          status: {formatSnapshotValue(entry.snapshot.status)}
-                        </Typography>
-                        <Typography variant="caption" sx={{ display: 'block' }}>
-                          is_available: {formatSnapshotValue(entry.snapshot.is_available)}
-                        </Typography>
-                        <Typography variant="caption" sx={{ display: 'block' }}>
-                          communication_state: {formatSnapshotValue(entry.snapshot.communication_state)}
-                        </Typography>
-                        <Typography variant="caption" sx={{ display: 'block' }}>
-                          latency_ms: {formatSnapshotValue(entry.snapshot.latency_ms)}
-                        </Typography>
-                        <Typography variant="caption" sx={{ display: 'block' }}>
-                          last_response_at: {formatSnapshotValue(entry.snapshot.last_response_at)}
-                        </Typography>
-                        <Typography variant="caption" sx={{ display: 'block' }}>
-                          timeout_count: {formatSnapshotValue(entry.snapshot.timeout_count)}
-                        </Typography>
-                        <Typography variant="caption" sx={{ display: 'block', mt: 0.75, fontWeight: 'bold' }}>
-                          metadata:
-                        </Typography>
-                        <Box
-                          component="pre"
-                          sx={{
-                            mt: 0.5,
-                            mb: 0,
-                            p: 1,
-                            borderRadius: 1,
-                            backgroundColor: '#e2e8f0',
-                            fontSize: '0.72rem',
-                            whiteSpace: 'pre-wrap',
-                            wordBreak: 'break-word'
-                          }}
-                        >
-                          {formatSnapshotValue(entry.snapshot.metadata)}
-                        </Box>
+
+                        {entry.snapshot.component_type === 'SERVER' ? (
+                          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 3 }}>
+                            <Box>
+                              <Typography variant="caption" color="textSecondary" sx={{ mb: 1.5, display: 'block', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                                Métricas de Performance
+                              </Typography>
+                              <MetricBar label="Carga CPU" value={entry.snapshot.metadata?.cpu_load} />
+                              <MetricBar
+                                label="Uso de Memoria RAM"
+                                value={entry.snapshot.metadata?.mem_used_percent}
+                                subtitle={entry.snapshot.metadata?.mem_used_gb ? `${entry.snapshot.metadata.mem_used_gb}GB / ${entry.snapshot.metadata.mem_total_gb}GB` : null}
+                              />
+                              <MetricBar
+                                label="Uso de Disco"
+                                value={entry.snapshot.metadata?.disk_used_percent}
+                                subtitle={entry.snapshot.metadata?.disk_used_gb ? `${entry.snapshot.metadata.disk_used_gb}GB / ${entry.snapshot.metadata.disk_total_gb}GB` : null}
+                              />
+                              <Typography variant="caption" sx={{ display: 'block', mt: 1 }}>
+                                Uptime: {entry.snapshot.metadata?.uptime ? `${(entry.snapshot.metadata.uptime / 3600).toFixed(1)} hs` : 'N/A'}
+                              </Typography>
+                              <Typography variant="caption" sx={{ display: 'block' }}>
+                                OS: {entry.snapshot.metadata?.os_platform} ({entry.snapshot.metadata?.os_distro})
+                              </Typography>
+                            </Box>
+                            <Box>
+                              <Typography variant="caption" color="textSecondary" sx={{ mb: 1.5, display: 'block', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                                Estado de Infraestructura
+                              </Typography>
+                              <Stack spacing={1}>
+                                <Paper variant="outlined" sx={{ p: 1, backgroundColor: '#ffffff', borderLeft: `4px solid ${entry.snapshot.metadata?.db_status === 'green' ? '#16a34a' : '#dc2626'}` }}>
+                                  <Typography variant="caption" sx={{ fontWeight: 'bold', display: 'block' }}>TimescaleDB (PostgreSQL)</Typography>
+                                  <Typography variant="caption" sx={{ color: entry.snapshot.metadata?.db_status === 'green' ? '#16a34a' : '#dc2626' }}>
+                                    {entry.snapshot.metadata?.db_status === 'green' ? 'ONLINE - SERIES TEMPORALES' : 'OFFLINE'}
+                                  </Typography>
+                                  <Typography variant="caption" sx={{ display: 'block' }}>
+                                    Latencia Query: {entry.snapshot.metadata?.db_latency_ms}ms
+                                  </Typography>
+                                </Paper>
+                                <Paper variant="outlined" sx={{ p: 1, backgroundColor: '#ffffff', borderLeft: '4px solid #16a34a' }}>
+                                  <Typography variant="caption" sx={{ fontWeight: 'bold', display: 'block' }}>Backend API & Sockets</Typography>
+                                  <Typography variant="caption" sx={{ color: '#16a34a' }}>ONLINE - NODE.JS</Typography>
+                                  <Typography variant="caption" sx={{ display: 'block' }}>
+                                    Puerto: 3000 | Host: {window.location.hostname}
+                                  </Typography>
+                                </Paper>
+                                <Paper variant="outlined" sx={{ p: 1, backgroundColor: '#ffffff', borderLeft: '4px solid #16a34a' }}>
+                                  <Typography variant="caption" sx={{ fontWeight: 'bold', display: 'block' }}>Frontend Dashboard</Typography>
+                                  <Typography variant="caption" sx={{ color: '#16a34a' }}>REPRESENTACION VIVA</Typography>
+                                  <Typography variant="caption" sx={{ display: 'block' }}>
+                                    Framework: React (Vite)
+                                  </Typography>
+                                </Paper>
+                              </Stack>
+                            </Box>
+                          </Box>
+                        ) : (
+                          <Box>
+                            <Typography variant="caption" sx={{ display: 'block' }}>
+                              status: {formatSnapshotValue(entry.snapshot.status)}
+                            </Typography>
+                            <Typography variant="caption" sx={{ display: 'block' }}>
+                              is_available: {formatSnapshotValue(entry.snapshot.is_available)}
+                            </Typography>
+                            <Typography variant="caption" sx={{ display: 'block' }}>
+                              communication_state: {formatSnapshotValue(entry.snapshot.communication_state)}
+                            </Typography>
+                            <Typography variant="caption" sx={{ display: 'block' }}>
+                              latency_ms: {formatSnapshotValue(entry.snapshot.latency_ms)}
+                            </Typography>
+                            <Typography variant="caption" sx={{ display: 'block' }}>
+                              last_response_at: {formatSnapshotValue(entry.snapshot.last_response_at)}
+                            </Typography>
+                            <Typography variant="caption" sx={{ display: 'block' }}>
+                              timeout_count: {formatSnapshotValue(entry.snapshot.timeout_count)}
+                            </Typography>
+                            <Typography variant="caption" sx={{ display: 'block', mt: 0.75, fontWeight: 'bold' }}>
+                              metadata:
+                            </Typography>
+                            <Box
+                              component="pre"
+                              sx={{
+                                mt: 0.5,
+                                mb: 0,
+                                p: 1,
+                                borderRadius: 1,
+                                backgroundColor: '#e2e8f0',
+                                fontSize: '0.72rem',
+                                whiteSpace: 'pre-wrap',
+                                wordBreak: 'break-word'
+                              }}
+                            >
+                              {formatSnapshotValue(entry.snapshot.metadata)}
+                            </Box>
+                          </Box>
+                        )}
                       </Paper>
                     ))
                   ) : (

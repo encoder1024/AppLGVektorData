@@ -27,6 +27,16 @@ export const applyCalibration = (rawValue, profile) => {
       // y = P(Bar) / 0.0689476
       return rawValue / 0.0689476;
 
+    case 'LOGARITHMIC':
+      // y = c0 + c1 * ln(rawValue + c2)
+      // Math.log en JS es el logaritmo natural (ln)
+      // x + c2 debe ser mayor que cero
+      const shiftedValue = rawValue + (c2 || 0);
+      if (shiftedValue <= 0) {
+        return c0 || 0; // Evitar NaN/Infinity
+      }
+      return (c0 || 0) + (c1 || 1) * Math.log(shiftedValue);
+
     case 'POLYNOMIAL':
     case 'LINEAR_SCALE':
     default:

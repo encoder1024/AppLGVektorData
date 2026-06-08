@@ -36,6 +36,7 @@ const normalizeSensorPayload = async (payload) => {
     warning_high: toNullableNumber(payload.warning_high),
     alert_low: toNullableNumber(payload.alert_low),
     alert_high: toNullableNumber(payload.alert_high),
+    setpoint: toNullableNumber(payload.setpoint),
     activo: payload.activo === undefined ? true : toBoolean(payload.activo),
   };
 
@@ -72,29 +73,85 @@ const getSensors = async (req, res) => {
 
 const getSensorReadings = async (req, res) => {
   const { id } = req.params;
-  const { start, end } = req.query;
+  const { start, end, downsample } = req.query;
 
   try {
-    let query = db('sensor_readings as sr')
-      .select(
-        'sr.time',
-        'sr.valor_procesado as value',
-        'sr.valor_crudo as raw_value',
-        's.unidad_medida as unit',
-        's.tag_name'
-      )
-      .leftJoin('sensors as s', 'sr.sensor_id', 's.id')
-      .where('sr.sensor_id', id);
+    const sensorId = Number(id);
+    const startDate = start ? new Date(start) : null;
+    const endDate = end ? new Date(end) : new Date();
 
-    if (start && end) {
-      query = query.whereBetween('sr.time', [start, end]);
-    } else if (start) {
-      query = query.where('sr.time', '>=', start);
-    } else if (end) {
-      query = query.where('sr.time', '<=', end);
+    let isDownsampling = false;
+    let bucketInterval = '1 minute';
+
+    if (downsample === 'true' && startDate) {
+      const diffMs = endDate.getTime() - startDate.getTime();
+      const seconds = diffMs / 1000;
+
+      // Para mantener un máximo de ~2000 puntos, dividimos el tiempo total por 2000.
+      if (seconds > 2000) {
+        isDownsampling = true;
+        // Si el rango es de 7 días, seconds es ~604800. 604800 / 2000 = 302.4 segundos (~5 minutos)
+        const bucketSeconds = Math.max(1, Math.ceil(seconds / 2000));
+        bucketInterval = `${bucketSeconds} seconds`;
+      }
+    } else if (downsample === 'true' && !startDate) {
+      // Si no hay fecha de inicio pero piden downsample, asumimos un default
+      isDownsampling = true;
+      bucketInterval = '1 minute';
     }
 
-    const readings = await query.orderBy('sr.time', 'asc');
+    let readings;
+    if (isDownsampling) {
+      // Usar time_bucket de TimescaleDB con intervalo dinámico
+      const rawQuery = `
+        SELECT 
+          time_bucket(?, sr.time) AS time,
+          avg(sr.valor_procesado) AS value,
+          avg(sr.valor_crudo) AS raw_value,
+          s.unidad_medida AS unit,
+          s.tag_name
+        FROM sensor_readings sr
+        JOIN sensors s ON sr.sensor_id = s.id
+        WHERE sr.sensor_id = ?
+        ${start ? 'AND sr.time >= ?' : ''}
+        ${end ? 'AND sr.time <= ?' : ''}
+        GROUP BY time, s.unidad_medida, s.tag_name
+        ORDER BY time ASC
+      `;
+
+      const params = [bucketInterval, sensorId];
+      if (start) params.push(start);
+      if (end) params.push(end);
+
+      const result = await db.raw(rawQuery, params);
+      readings = result.rows.map(row => ({
+        ...row,
+        value: Number(row.value),
+        raw_value: Number(row.raw_value)
+      }));
+    } else {
+      let query = db('sensor_readings as sr')
+        .select(
+          'sr.time',
+          'sr.valor_procesado as value',
+          'sr.valor_crudo as raw_value',
+          's.unidad_medida as unit',
+          's.tag_name'
+        )
+        .leftJoin('sensors as s', 'sr.sensor_id', 's.id')
+        .where('sr.sensor_id', sensorId);
+
+      if (start && end) {
+        query = query.whereBetween('sr.time', [start, end]);
+      } else if (start) {
+        query = query.where('sr.time', '>=', start);
+      } else if (end) {
+        query = query.where('sr.time', '<=', end);
+      }
+
+      readings = await query.orderBy('sr.time', 'asc');
+    }
+
     res.json(readings);
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener lecturas historicas del sensor', error: error.message });

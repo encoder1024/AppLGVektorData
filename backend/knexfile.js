@@ -1,21 +1,21 @@
-import 'dotenv/config';
+import "dotenv/config";
 
 export default {
-  client: 'pg',
+  client: "pg",
   connection: {
-    host: process.env.DB_HOST || 'localhost',
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
-    port: parseInt(process.env.DB_PORT, 10) || 5432,
+    host: import.meta.env.DB_HOST || "localhost",
+    user: import.meta.env.DB_USER,
+    password: import.meta.env.DB_PASSWORD,
+    database: import.meta.env.DB_NAME,
+    port: parseInt(import.meta.env.DB_PORT, 10) || 5432,
   },
   migrations: {
-    directory: './src/migrations',
-    extension: 'js',
-    tableName: 'knex_migrations'
+    directory: "./src/migrations",
+    extension: "js",
+    tableName: "knex_migrations",
   },
   seeds: {
-    directory: './src/seeds',
-    extension: 'js'
-  }
+    directory: "./src/seeds",
+    extension: "js",
+  },
 };

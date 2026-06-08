@@ -1,6 +1,10 @@
 import Modbus from 'jsmodbus';
 import net from 'net';
 
+// para arrancar el servidor Modbus TCP en el puerto 5020: 
+// 1- cd C:\Users\andre\Documents\Proyectos\GeminiTests\AppLGVektorData\backend
+// 2- node ../simulators/modbus_sim.js
+
 const netServer = new net.Server();
 
 // 500 registros holding de 16 bits

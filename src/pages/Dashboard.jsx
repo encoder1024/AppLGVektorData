@@ -148,7 +148,7 @@ const getActuatorStatus = (actuator, action) => {
 
   return {
     active,
-    color: active ? '#2563eb' : '#64748b',
+    color: active ? '#10b981' : '#64748b',
     label: active ? 'SALIDA ACTIVA' : 'SALIDA EN REPOSO',
     actionLabel: parsedState.label,
     valueText: variant === 'pulse' ? (active ? 'PULSE' : 'READY') : parsedState.valueText,
@@ -167,7 +167,7 @@ const ActuatorIllustration = ({ actuator, status }) => {
         <rect x="64" y="34" width="92" height="20" rx="10" fill="#94a3b8" />
         <g style={{ transformOrigin: '110px 36px', transform: status.active ? 'translateY(12px)' : 'translateY(0px)', transition: 'transform 180ms ease' }}>
           <ellipse cx="110" cy="36" rx="48" ry="24" fill={status.active ? '#2563eb' : '#e2e8f0'} />
-          <ellipse cx="110" cy="31" rx="36" ry="15" fill={status.active ? '#60a5fa' : '#f8fafc'} />
+          <ellipse cx="110" cy="31" rx="36" ry="15" fill={status.active ? '#10b981' : '#f8fafc'} />
         </g>
       </svg>
     );
@@ -190,14 +190,14 @@ const ActuatorIllustration = ({ actuator, status }) => {
           cy="60"
           r="28"
           fill="#ffffff"
-          stroke={status.active ? '#2563eb' : '#94a3b8'}
+          stroke={status.active ? '#10b981' : '#94a3b8'}
           strokeWidth="4"
           style={{ transition: 'cx 220ms ease, stroke 220ms ease' }}
         />
         <text x="48" y="106" fontSize="16" fill="#475569" fontWeight="700">
           OFF
         </text>
-        <text x="152" y="106" fontSize="16" fill="#2563eb" fontWeight="700" textAnchor="end">
+        <text x="152" y="106" fontSize="16" fill="#10b981" fontWeight="700" textAnchor="end">
           ON
         </text>
       </svg>
@@ -221,6 +221,7 @@ const Dashboard = () => {
   const [actuators, setActuators] = useState([]);
   const [readings, setReadings] = useState({});
   const [latestActuatorActions, setLatestActuatorActions] = useState({});
+  const [networkStatus, setNetworkStatus] = useState([]);
   const [actuatorCommandLoading, setActuatorCommandLoading] = useState({});
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(false);
@@ -261,10 +262,11 @@ const Dashboard = () => {
   const fetchDashboardData = async () => {
     setError('');
     try {
-      const [sensorResponse, actuatorResponse, actuatorActionsResponse] = await Promise.all([
+      const [sensorResponse, actuatorResponse, actuatorActionsResponse, syncResponse] = await Promise.all([
         api.get('/sensors'),
         api.get('/actuators'),
-        api.get('/actuator-actions')
+        api.get('/actuator-actions'),
+        api.get('/actuators/sync')
       ]);
 
       const activeSensors = sensorResponse.data.filter((sensor) => sensor.activo);
@@ -276,6 +278,18 @@ const Dashboard = () => {
       });
 
       const lastActionByActuator = {};
+      
+      // Primero cargamos el estado REAL del PLC
+      Object.entries(syncResponse.data || {}).forEach(([actuatorId, state]) => {
+        lastActionByActuator[actuatorId] = {
+          actuator_id: actuatorId,
+          action_type: 'SYNC',
+          timestamp: new Date().toISOString(),
+          details: { state: state }
+        };
+      });
+
+      // Sobrescribimos o complementamos con el histórico, dando prioridad al estado actual
       (actuatorActionsResponse.data || []).forEach((action) => {
         if (!action.actuator_id || lastActionByActuator[action.actuator_id]) {
           return;
@@ -342,6 +356,9 @@ const Dashboard = () => {
     socket.on('disconnect', () => setConnected(false));
     socket.on('sensor_update', (data) => {
       setReadings((prev) => ({ ...prev, [data.sensor_id]: data.value }));
+    });
+    socket.on('network_status_update', (data) => {
+      setNetworkStatus(data);
     });
     socket.on('actuator_update', (data) => {
       setActuatorCommandState(data.actuator_id, {
@@ -504,7 +521,7 @@ const Dashboard = () => {
           <Typography variant="h4" sx={{ fontWeight: 'bold', color: '#1e293b' }}>
             HMI Real-Time
           </Typography>
-          <Box sx={{ mt: 1 }}>
+          <Box sx={{ mt: 1, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
             <Chip
               icon={connected ? <WifiIcon /> : <WifiOffIcon />}
               label={connected ? 'POLLING ACTIVO' : 'RECONECTANDO...'}
@@ -512,6 +529,20 @@ const Dashboard = () => {
               variant="outlined"
               size="small"
             />
+            {networkStatus.map((node) => (
+              <Chip
+                key={node.id}
+                label={`${node.tag_name}: ${node.status}`}
+                color={
+                  node.status === 'UP' ? 'success' : 
+                  node.status === 'DEGRADED' ? 'warning' : 'error'
+                }
+                size="small"
+                variant="filled"
+                title={`IP: ${node.ip} | Latencia: ${node.latency ? node.latency + 'ms' : 'N/A'}`}
+                sx={{ fontWeight: 'bold' }}
+              />
+            ))}
           </Box>
         </Box>
 
@@ -632,7 +663,21 @@ const Dashboard = () => {
                     </Stack>
                   </Box>
 
-                  <Box sx={{ height: 110, px: 1.5 }}>
+                  <Box sx={{ height: 110, px: 1.5, position: 'relative' }}>
+                    {sensor.setpoint !== null && sensor.setpoint !== undefined && (
+                      <Box
+                        sx={{
+                          position: 'absolute',
+                          top: -5,
+                          right: 10,
+                          zIndex: 5,
+                        }}
+                      >
+                        <Typography variant="caption" sx={{ fontWeight: 'bold', color: '#059669', fontSize: '0.7rem', whiteSpace: 'nowrap' }}>
+                          SET: {sensor.setpoint.toFixed(1)} {sensor.unidad_medida}
+                        </Typography>
+                      </Box>
+                    )}
                     <GaugeComponent
                       value={value}
                       type="grafana"
@@ -645,9 +690,16 @@ const Dashboard = () => {
                         subArcs: [
                           { limit: sensor.alert_low || sensor.min_range, color: '#3b82f6' },
                           { limit: sensor.warning_low || sensor.min_range, color: '#f59e0b' },
-                          { limit: sensor.warning_high || sensor.max_range, color: '#10b981' },
+                          // Si hay setpoint, lo marcamos en NEGRO (ancho doble)
+                          ...(sensor.setpoint !== null ? [
+                            { limit: sensor.setpoint - 1.0, color: '#10b981' },
+                            { limit: sensor.setpoint + 1.0, color: '#000000' }, // Marca del setpoint en NEGRO
+                            { limit: sensor.warning_high || sensor.max_range, color: '#10b981' }
+                          ] : [
+                            { limit: sensor.warning_high || sensor.max_range, color: '#10b981' }
+                          ]),
                           { limit: sensor.alert_high || sensor.warning_high, color: '#f59e0b' },
-                          { limit: sensor.alert_high || sensor.max_range, color: '#ef4444' }
+                          { limit: sensor.alert_high+0.1 || sensor.max_range, color: '#ef4444' }
                         ]
                           .filter((arc) => arc.limit !== undefined && arc.limit !== null)
                           .sort((a, b) => a.limit - b.limit)

@@ -19,4 +19,4 @@ COPY . .
 EXPOSE 3000
 
 # Comando para arrancar en modo desarrollo (nodemon con legacy-watch)
-CMD ["npm", "run", "dev"]
+CMD ["npm", "run", "start"]

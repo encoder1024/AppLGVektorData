@@ -61,7 +61,7 @@ async function initSystem() {
     try {
       await db.raw("SELECT 1");
       await db.migrate.latest();
-      await db.seed.run();
+      // await db.seed.run();
       console.log("Base de datos industrial lista.");
 
       plcManager.setIO(io);
